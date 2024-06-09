@@ -1,3 +1,4 @@
+import { IParsedCertificate } from "../interfaces/certificate.interface";
 import { rutoken } from "./rutoken";
 export class RutokenDriver {
 
@@ -9,7 +10,7 @@ export class RutokenDriver {
     #deviceList = []
     #deviceMap = new Map()
     #certList = []
-    parsedCertificates = []
+    parsedCertificates: IParsedCertificate[] = []
     #errors = []
     #selectedCertificate
     #_keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
@@ -283,17 +284,17 @@ export class RutokenDriver {
 
         let now = new Date();
         let certPem = await this.#plugin.getCertificate(this.#selectedCertificate.deviceId, this.#selectedCertificate.certificateId)
-        let parsedCertificate = {
-            ValidToDate: this.#getDate(certificate.validNotAfter),
-            ValidFromDate: this.#getDate(certificate.validNotBefore),
-            SubjectName: subjectString,
-            IssuerName: issuerString,
+        let parsedCertificate: IParsedCertificate = {
+            validToDate: this.#getDate(certificate.validNotAfter).toUTCString(),
+            validFromDate: this.#getDate(certificate.validNotBefore).toUTCString(),
+            subjectName: subjectString,
+            issuerName: issuerString,
             id: this.#selectedCertificate.certificateId,
-            IsValid: now <= this.#getDate(certificate.validNotAfter) && now >= this.#getDate(certificate.validNotBefore),
-            HasPrivateKey: true,
+            isValid: now <= this.#getDate(certificate.validNotAfter) && now >= this.#getDate(certificate.validNotBefore),
+            hasPrivateKey: true,
             serial: certificate.serialNumber,
             b64: certPem,
-            Thumbprint: this.#selectedCertificate.certificateId.replace(/:/g, '').toUpperCase(),
+            thumbprint: this.#selectedCertificate.certificateId.replace(/:/g, '').toUpperCase(),
             deviceId: this.#selectedCertificate.deviceId
         }
         let isFoundParsed = false

@@ -1,24 +1,24 @@
-import { utf8_encode } from "./utils/utf-encode";
-import { isObject } from "./utils/deep-equal";
-import { deepEqual } from "./utils/deep-equal";
+import { isObject } from './utils/deep-equal';
+import { deepEqual } from './utils/deep-equal';
 import { encode } from './utils/encode';
-import { getCertificateInPem } from './utils/prepare-b64'
+import { getCertificateInPem } from './utils/prepare-b64';
+import { IParsedCertificate } from '../interfaces/certificate.interface';
 
 declare const cadesplugin;
 export class CryptoProDriver {
     /**Псевдоним для совместимости */
-    public get parsedCertificates(): Array<any> {
+    public get parsedCertificates(): Array<IParsedCertificate> {
         return this._parsedCertificateList;
     }
     public isPluginLoaded: boolean = false
     public isPluginWorked: boolean = false
     public isActualVersion: boolean = false
 
-    private _parsedCertificateList: Array<any> = []
+    private _parsedCertificateList: Array<IParsedCertificate> = []
     private _plugin: any;
     private _isAsync: boolean;
     private _currentPluginVersion: string;
-    private _scpName;
+    private _scpName: string;
     private _markedThumbprintContainer: Array<string> = [];
     private _isPluginEnabled: boolean;
     private _deviceMap: Map<number, Array<any>> = new Map();
@@ -439,16 +439,16 @@ export class CryptoProDriver {
 
 
 
-                            let parsedCertificate = {
-                                ValidToDate: yield certificateItem.ValidToDate,
-                                ValidFromDate: yield certificateItem.ValidFromDate,
-                                SubjectName: yield certificateItem.SubjectName,
-                                IssuerName: yield certificateItem.IssuerName,
-                                Thumbprint: yield certificateItem.Thumbprint,
+                            let parsedCertificate: IParsedCertificate = {
+                                validToDate: yield certificateItem.ValidToDate,
+                                validFromDate: yield certificateItem.ValidFromDate,
+                                subjectName: yield certificateItem.SubjectName,
+                                issuerName: yield certificateItem.IssuerName,
+                                thumbprint: yield certificateItem.Thumbprint,
                                 id: i,
-                                IsValid: now < validToDate && now >= validFromDate,
+                                isValid: now < validToDate && now >= validFromDate,
                                 serial: yield certificateItem.SerialNumber,
-                                HasPrivateKey: yield certificateItem.HasPrivateKey(),
+                                hasPrivateKey: yield certificateItem.HasPrivateKey(),
                                 b64: getCertificateInPem(certInBase64),
                                 // algorythmOid: algoOid,
                                 deviceId: 0
@@ -531,16 +531,16 @@ export class CryptoProDriver {
                             certInBase64 = yield certificateItem.Export(_this._plugin.CADESCOM_ENCODE_BASE64);
 
 
-                        let parsedCertificate = {
-                            ValidToDate: yield certificateItem.ValidToDate,
-                            ValidFromDate: yield certificateItem.ValidFromDate,
-                            SubjectName: yield certificateItem.SubjectName,
-                            IssuerName: yield certificateItem.IssuerName,
-                            Thumbprint: yield certificateItem.Thumbprint,
+                        let parsedCertificate: IParsedCertificate = {
+                            validToDate: yield certificateItem.ValidToDate,
+                            validFromDate: yield certificateItem.ValidFromDate,
+                            subjectName: yield certificateItem.SubjectName,
+                            issuerName: yield certificateItem.IssuerName,
+                            thumbprint: yield certificateItem.Thumbprint,
                             id: i,
-                            IsValid: now < validToDate && now >= validFromDate,
+                            isValid: now < validToDate && now >= validFromDate,
                             serial: yield certificateItem.SerialNumber,
-                            HasPrivateKey: yield certificateItem.HasPrivateKey(),
+                            hasPrivateKey: yield certificateItem.HasPrivateKey(),
                             b64: getCertificateInPem(certInBase64),
                             // algorythmOid: algoOid,
                             deviceId: 1
@@ -823,7 +823,7 @@ export class CryptoProDriver {
                 try {
                     cert = certs.Item(i)
                     for (var j = 0; j < _this._parsedCertificateList.length; j++) {
-                        let certListTemp = _this._parsedCertificateList[j].Thumbprint
+                        let certListTemp = _this._parsedCertificateList[j].thumbprint
                         let certTemp = cert.Thumbprint
                         if (deepEqual(certListTemp, certTemp)) {
                             isFound = true
@@ -846,18 +846,18 @@ export class CryptoProDriver {
                             validator = cert.IsValid(),
                             isValid = validator.Result
 
-                        let c = {
-                            ValidToDate: cert.ValidToDate,
-                            ValidFromDate: cert.ValidFromDate,
-                            SubjectName: cert.SubjectName,
-                            IssuerName: cert.IssuerName,
-                            Thumbprint: cert.Thumbprint,
+                        let c: IParsedCertificate = {
+                            validToDate: cert.ValidToDate,
+                            validFromDate: cert.ValidFromDate,
+                            subjectName: cert.SubjectName,
+                            issuerName: cert.IssuerName,
+                            thumbprint: cert.Thumbprint,
                             id: i,
-                            IsValid: now < validToDate && now >= validFromDate,
-                            HasPrivateKey: cert.HasPrivateKey(),
+                            isValid: now < validToDate && now >= validFromDate,
+                            hasPrivateKey: cert.HasPrivateKey(),
                             serial: cert.SerialNumber,
                             b64: cert.Export(_this._plugin.CADESCOM_ENCODE_BASE64),
-                            algorythmOid: algoOid,
+                            // algorythmOid: algoOid,
                             deviceId: 0
                         }
                         let isFoundParsed = false
@@ -913,7 +913,7 @@ export class CryptoProDriver {
             try {
                 cert = certs.Item(i)
                 for (let j = 0; j < _this._parsedCertificateList.length; j++) {
-                    let certListTemp = _this._parsedCertificateList[j].Thumbprint
+                    let certListTemp = _this._parsedCertificateList[j].thumbprint
                     let certTemp = cert.Thumbprint
                     if (deepEqual(certListTemp, certTemp)) {
                         isFound = true
@@ -941,18 +941,18 @@ export class CryptoProDriver {
                     validator = cert.IsValid(),
                     isValid = validator.Result
 
-                let c = {
-                    ValidToDate: cert.ValidToDate,
-                    ValidFromDate: cert.ValidFromDate,
-                    SubjectName: cert.SubjectName,
-                    IssuerName: cert.IssuerName,
-                    thumbPrint: cert.Thumbprint,
+                let c: IParsedCertificate = {
+                    validToDate: cert.ValidToDate,
+                    validFromDate: cert.ValidFromDate,
+                    subjectName: cert.SubjectName,
+                    issuerName: cert.IssuerName,
+                    thumbprint: cert.Thumbprint,
                     id: i,
-                    IsValid: now < validToDate && now >= validFromDate,
-                    HasPrivateKey: cert.HasPrivateKey(),
+                    isValid: now < validToDate && now >= validFromDate,
+                    hasPrivateKey: cert.HasPrivateKey(),
                     serial: cert.SerialNumber,
                     b64: cert.Export(_this._plugin.CADESCOM_ENCODE_BASE64),
-                    algorythmOid: algoOid,
+                    // algorythmOid: algoOid,
                     deviceId: 1
                 }
                 console.log(cert)

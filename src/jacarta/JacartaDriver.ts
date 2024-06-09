@@ -1,3 +1,5 @@
+import { IParsedCertificate } from "../interfaces/certificate.interface";
+
 declare const JCWebClient2;
 export class JacartaDriver {
 
@@ -8,7 +10,7 @@ export class JacartaDriver {
     _deviceList = []
     _deviceMap = new Map()
     _certList = []
-    parsedCertificates = []
+    public parsedCertificates: IParsedCertificate[] = []
     _selectedCertificate
     _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
     _callback
@@ -323,15 +325,15 @@ export class JacartaDriver {
         let now = new Date();
         let preparedSerialNumber = this._bufferSerialToHex(certificate.serial);
 
-        let parsedCertificate = ({
-            ValidToDate: certificate.date.to,
-            ValidFromDate: certificate.date.from,
-            SubjectName: subjectString,
-            IssuerName: issuerString,
-            Thumbprint: '',
+        let parsedCertificate: IParsedCertificate = ({
+            validToDate: certificate.date.to,
+            validFromDate: certificate.date.from,
+            subjectName: subjectString,
+            issuerName: issuerString,
+            thumbprint: '',
             id: this._selectedCertificate.certificateId,
-            IsValid: now >= certificate.date.from && now <= certificate.date.to,
-            HasPrivateKey: true,
+            isValid: now >= certificate.date.from && now <= certificate.date.to,
+            hasPrivateKey: true,
             serial: preparedSerialNumber,
             b64: this._getCertificateInPem(this._selectedCertificate.deviceId, this._selectedCertificate.certificateId),
             deviceId: this._selectedCertificate.deviceId
