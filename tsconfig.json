@@ -1,0 +1,33 @@
+{
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ],
+    "compilerOptions": {
+        "esModuleInterop": true,
+        // "strict": true,
+        "noImplicitThis": false,
+        "sourceMap": true,
+        "moduleResolution": "node",
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        // "importHelpers": true,
+        "target": "es2015",
+        "module": "es2020",
+        "lib": [
+            "es2020",
+            "dom"
+        ],
+        "skipLibCheck": true,
+        "skipDefaultLibCheck": true,
+        "noImplicitOverride": true,
+        "removeComments": false,
+        "resolveJsonModule": true,
+        "rootDir": "./src",
+        "allowJs": true,
+        "declaration": false,
+        "outDir": "./dist",
+    }
+}
