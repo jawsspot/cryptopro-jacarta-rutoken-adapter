@@ -1,5 +1,7 @@
 import { IParsedCertificate } from "../interfaces/certificate.interface";
+import { ICryptoDriverError } from "../interfaces/crypto-driver-error.interface";
 import { IPluginData } from "../interfaces/plugin-data.interface";
+import { encode } from "../utils/encode";
 
 declare const JCWebClient2;
 export class JacartaDriver {
@@ -31,41 +33,41 @@ export class JacartaDriver {
             }
         }
         catch (err) {
-            throw this.#handleError(5, err.message, 'isActualVersionPlugin')
+            throw this.handleError(5, err.message, 'isActualVersionPlugin')
         }
     }
 
-    async loadPlugin() {
+    public async loadPlugin(): Promise<void> {
         if (this.isPluginLoaded) return
         try {
-            await this.#loadJC()
+            await this.loadJC()
         }
         catch (err) {
-            throw this.#handleError(6, err.message, 'loadPlugin')
+            throw this.handleError(6, err.message, 'loadPlugin')
         }
 
     }
 
-    async reloadDevices() {
+    public async reloadDevices() {
         try {
             this._certList = []
             this._deviceList = []
             this._deviceMap.clear
             this.parsedCertificates = []
-            this.#initialize()
+            this.initialize()
         }
         catch (err) {
             if (err.method)
                 throw err;
-            throw this.#handleError(1, err.message, 'reloadDevices')
+            throw this.handleError(1, err.message, 'reloadDevices')
         }
     }
 
-    addCallback(cb) {
+    public addCallback(cb) {
         this._callback = cb
     }
 
-    async signCMS(data, certificateId, deviceId) {
+    public async signCMS(data, certificateId, deviceId) {
         let CMS
         let isBinded = false
         let loggedInToken = this._plugin.getLoggedInState()
@@ -78,7 +80,7 @@ export class JacartaDriver {
 
                 }
                 catch (reason) {
-                    throw this.#handleError(2, reason.message, 'signCMS')
+                    throw this.handleError(2, reason.message, 'signCMS')
                 }
             }
         }
@@ -86,10 +88,10 @@ export class JacartaDriver {
         try {
 
             if (typeof data === 'object') {
-                dataToSign = this.#bytesToBase64(data)
+                dataToSign = this.bytesToBase64(data)
             }
             else {
-                dataToSign = this.#encode(data)
+                dataToSign = encode(data)
             }
 
             CMS = this._plugin.signBase64EncodedData({
@@ -105,14 +107,27 @@ export class JacartaDriver {
         catch (reason) {
             if (reason.method)
                 throw reason;
-            throw this.#handleError(2, reason.message, 'signCMS')
+            throw this.handleError(2, reason.message, 'signCMS')
         }
         console.log(CMS);
 
         return CMS
     }
 
-    _stringVersionCompare(actualVersion, currentPluginVersion) {
+    public addListener(): void {
+        this._plugin.addEventListener("slotAdded", (slotID) => {
+            this.handleSlotAdded("Slot has been added: " + slotID);
+        })
+    }
+
+    public handleSlotAdded(input) {
+        console.log(input)
+        this.reloadDevices()
+        if (typeof this._callback === 'function')
+            this._callback(input)
+    }
+
+    private _stringVersionCompare(actualVersion, currentPluginVersion) {
         const actual = actualVersion.split('.');
         const current = currentPluginVersion.split('.');
         let isActual = true;
@@ -126,7 +141,7 @@ export class JacartaDriver {
         return isActual;
     }
 
-    async #loadJC() {
+    private async loadJC() {
         const _this = this
 
         return new Promise<void>(function (resolve, reject) {
@@ -153,9 +168,9 @@ export class JacartaDriver {
                     _this.isPluginInstalled = true
                     _this.isPluginLoaded = true
                     _this._plugin = JCWebClient2
-                    _this.#addListener()
+                    _this.addListener()
                     _this._plugin.initialize()
-                    _this.#initialize()
+                    _this.initialize()
                     _this.pluginVersion = await _this._plugin.getJCWebClientVersion();
 
                     resolve();
@@ -167,20 +182,9 @@ export class JacartaDriver {
     }
 
 
-    #addListener() {
-        this._plugin.addEventListener("slotAdded", (slotID) => {
-            this.#handleSlotAdded("Slot has been added: " + slotID);
-        })
-    }
 
-    #handleSlotAdded(input) {
-        console.log(input)
-        this.reloadDevices()
-        if (typeof this._callback === 'function')
-            this._callback(input)
-    }
 
-    #initialize() {
+    private initialize() {
         try {
             const allDevices = this._plugin.getAllSlots()
             for (let index = 0; index < allDevices.length; index++) {
@@ -200,32 +204,32 @@ export class JacartaDriver {
 
             for (var [key, value] of this._deviceMap) {
                 for (let j = 0; j < value.length; j++) {
-                    this.#getCertificateInfo(key, value[j])
+                    this.getCertificateInfo(key, value[j])
                 }
             }
         }
         catch (reason) {
-            throw this.#handleError(1, reason.message || reason, 'initialize')
+            throw this.handleError(1, reason.message || reason, 'initialize')
         }
     }
 
-    #getCertificateInfo(deviceId, certificateId) {
+    private getCertificateInfo(deviceId, certificateId) {
         let prepocessedCertificate
         try {
             this._selectedCertificate = { "deviceId": deviceId, "certificateId": certificateId }
 
             const certificate = this._plugin.parseX509Certificate({ args: { tokenID: deviceId, id: certificateId } })
-            prepocessedCertificate = this.#preprocessCertificate(certificate)
+            prepocessedCertificate = this.preprocessCertificate(certificate)
         }
         catch (reason) {
             if (reason.method)
                 throw reason;
-            throw this.#handleError(1, reason.message || reason, 'getCertificateInfo')
+            throw this.handleError(1, reason.message || reason, 'getCertificateInfo')
         }
-        return this.#parseCertificate(prepocessedCertificate)
+        return this.parseCertificate(prepocessedCertificate)
     }
 
-    #preprocessCertificate(certificate) {
+    private preprocessCertificate(certificate) {
         let res: any = {},
             parts: any = {},
             sLength = certificate.Data.Subject.length,
@@ -273,7 +277,7 @@ export class JacartaDriver {
 
         return res
     }
-    #parseCertificate(certificate) {
+    private parseCertificate(certificate) {
         let subjectString = '', issuerString = '';
 
         let inn = this._getValueFromCertificate(certificate.subject, 'INN'),
@@ -341,14 +345,15 @@ export class JacartaDriver {
         let isFoundParsed = false
         for (let k = 0; k < this.parsedCertificates.length; k++) {
             let parsedTemp = this.parsedCertificates[k]
-            if (this.#deepEqual(parsedTemp, parsedCertificate))
+            if (parsedTemp.thumbprint === parsedCertificate.thumbprint) {
                 isFoundParsed = true
+            }
         }
         if (!isFoundParsed)
             this.parsedCertificates.push(parsedCertificate)
     }
 
-    _bufferSerialToHex(serial) {
+    private _bufferSerialToHex(serial) {
         const serialString = serial.replace(/(\[|\]|\s)/g, '');
         const serialArray = serialString.split(',').map(v => +v);
         const resultHex = Buffer.from(serialArray).toString('hex').toUpperCase();
@@ -356,7 +361,7 @@ export class JacartaDriver {
         return resultHex;
     }
 
-    _getValueFromCertificate(certificate, key) {
+    private _getValueFromCertificate(certificate, key) {
         if (typeof certificate[key] != "undefined") {
             return certificate[key];
         }
@@ -364,7 +369,7 @@ export class JacartaDriver {
         return '';
     }
 
-    _getCertificateInPem(deviceId, certificateId) {
+    private _getCertificateInPem(deviceId, certificateId) {
         try {
             let certInBase64 = this._certFromBytesToBase64(this._plugin.getCertificateBody({ args: { tokenID: deviceId, id: certificateId } }))
             const lineBreak = '\n'
@@ -378,87 +383,19 @@ export class JacartaDriver {
             return begin + certInBase64 + end
         }
         catch (err) {
-            throw this.#handleError(1, err.message || err, 'getCertificateInPem')
+            throw this.handleError(1, err.message || err, 'getCertificateInPem')
         }
     }
 
 
-    #deepEqual(object1, object2) {
-        const keys1 = Object.keys(object1)
-        const keys2 = Object.keys(object2)
 
-        if (keys1.length !== keys2.length) {
-            return false
-        }
 
-        for (const key of keys1) {
-            const val1 = object1[key]
-            const val2 = object2[key]
-            const areObjects = this._isObject(val1) && this._isObject(val2)
-            if (
-                areObjects && !this.#deepEqual(val1, val2) ||
-                !areObjects && val1 !== val2
-            ) {
-                return false
-            }
-        }
-        return true
-    }
 
-    _isObject(object) {
-        return object != null && typeof object === 'object'
-    }
 
-    #encode(input) {
-        let output = ""
-        let chr1, chr2, chr3, enc1, enc2, enc3, enc4
-        let i = 0
-        input = this.#utf8_encode(input)
 
-        while (i < input.length) {
-            chr1 = input.charCodeAt(i++)
-            chr2 = input.charCodeAt(i++)
-            chr3 = input.charCodeAt(i++)
-            enc1 = chr1 >> 2
-            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4)
-            enc3 = ((chr2 & 15) << 2) | (chr3 >> 6)
-            enc4 = chr3 & 63
 
-            if (isNaN(chr2)) {
-                enc3 = enc4 = 64
-            } else if (isNaN(chr3)) {
-                enc4 = 64
-            }
-            output = output + this._keyStr.charAt(enc1) + this._keyStr.charAt(enc2) + this._keyStr.charAt(enc3) + this._keyStr.charAt(enc4)
-        }
-        return output
-    }
-    #utf8_encode(input) {
-        let string = input.replace(/\r\n/g, "\n")
-        let utftext = ""
 
-        for (let n = 0; n < string.length; n++) {
-
-            let c = string.charCodeAt(n)
-
-            if (c < 128) {
-                utftext += String.fromCharCode(c)
-            }
-            else if ((c > 127) && (c < 2048)) {
-                utftext += String.fromCharCode((c >> 6) | 192)
-                utftext += String.fromCharCode((c & 63) | 128)
-            }
-            else {
-                utftext += String.fromCharCode((c >> 12) | 224)
-                utftext += String.fromCharCode(((c >> 6) & 63) | 128)
-                utftext += String.fromCharCode((c & 63) | 128)
-            }
-        }
-
-        return utftext
-    }
-
-    #handleError(code, message, method) {
+    private handleError(code, message, method): ICryptoDriverError {
         let error = {
             code,
             description: 'Неизвестная ошибка',
@@ -528,14 +465,14 @@ export class JacartaDriver {
         return error;
     }
 
-    #bytesToBase64(arrayBuffer) {
+    private bytesToBase64(arrayBuffer) {
         return btoa(new Uint8Array(arrayBuffer).reduce(function (data, byte) {
             return data + String.fromCharCode(byte);
         }, ''));
         // return btoa(String.fromCharCode.apply(null, new Uint8Array(arrayBuffer)));
         // return btoa(String.fromCharCode(arrayBuffer));
     }
-    _certFromBytesToBase64(arrayBuffer) {
+    private _certFromBytesToBase64(arrayBuffer) {
         return btoa(String.fromCharCode(...new Uint32Array(arrayBuffer)));
     }
 }

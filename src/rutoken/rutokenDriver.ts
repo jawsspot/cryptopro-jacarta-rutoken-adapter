@@ -1,5 +1,7 @@
 import { IParsedCertificate } from "../interfaces/certificate.interface";
+import { ICryptoDriverError } from "../interfaces/crypto-driver-error.interface";
 import { IPluginData } from "../interfaces/plugin-data.interface";
+import { encode } from "../utils/encode";
 import { rutoken } from "./rutoken";
 export class RutokenDriver {
     public parsedCertificates: IParsedCertificate[] = []
@@ -37,7 +39,7 @@ export class RutokenDriver {
 
                             resolve(void 0);
                         }
-                        reject(_this.#handleError(5, `Ошибка при запросе актуальной версии плагина`, 'isActualVersionPlugin'))
+                        reject(_this.handleError(5, `Ошибка при запросе актуальной версии плагина`, 'isActualVersionPlugin'))
                     }
                 }
                 xhr.send()
@@ -95,7 +97,7 @@ export class RutokenDriver {
             if (reason.method)
                 throw reason;
             console.log(this._errors[reason.message])
-            throw this.#handleError(6, this._errors[reason.message] || reason.message, 'loadPlugin')
+            throw this.handleError(6, this._errors[reason.message] || reason.message, 'loadPlugin')
         }
     }
 
@@ -111,7 +113,7 @@ export class RutokenDriver {
             if (reason.method)
                 throw reason;
             console.log(this._errors[reason.message])
-            throw this.#handleError(3, this._errors[reason.message] || reason.message, 'reloadDevices')
+            throw this.handleError(3, this._errors[reason.message] || reason.message, 'reloadDevices')
         }
     }
 
@@ -134,10 +136,10 @@ export class RutokenDriver {
             }
 
             if (typeof data === 'object') {
-                dataToSign = this.#bytesToBase64(data)
+                dataToSign = this.bytesToBase64(data)
             }
             else {
-                dataToSign = this.#encode(data)
+                dataToSign = encode(data)
             }
             console.log('before  bindToken if')
             if (!await this.bindToken(deviceId)) {
@@ -155,9 +157,9 @@ export class RutokenDriver {
         catch (reason) {
 
             if (reason.code === 10) {
-                throw this.#handleError(2, reason.message, 'signCMS');
+                throw this.handleError(2, reason.message, 'signCMS');
             }
-            throw this.#handleError(2, this._errors[reason.message] || reason.message, 'signCMS')
+            throw this.handleError(2, this._errors[reason.message] || reason.message, 'signCMS')
         }
         return CMS
     }
@@ -207,7 +209,7 @@ export class RutokenDriver {
             return this._deviceList
         }
         catch (e) {
-            throw this.#handleError(3, this._errors[e.message] || e.message, 'getAllDevices')
+            throw this.handleError(3, this._errors[e.message] || e.message, 'getAllDevices')
         }
     }
 
@@ -227,7 +229,7 @@ export class RutokenDriver {
             return this._deviceMap
         }
         catch (e) {
-            throw this.#handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
+            throw this.handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
         }
     }
 
@@ -242,7 +244,7 @@ export class RutokenDriver {
             if (e.method)
                 throw e;
 
-            throw this.#handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
+            throw this.handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
         }
     }
 
@@ -310,8 +312,9 @@ export class RutokenDriver {
         }
         let isFoundParsed = false
         for (let k = 0; k < this.parsedCertificates.length; k++) {
-            let parsedTemp = this.parsedCertificates[k]
-            if (this.#deepEqual(parsedTemp, parsedCertificate))
+            let parsedTemp = this.parsedCertificates[k];
+
+            if (parsedTemp.thumbprint === parsedCertificate.thumbprint)
                 isFoundParsed = true
         }
         if (!isFoundParsed)
@@ -347,7 +350,7 @@ export class RutokenDriver {
             return true
         }
         catch (e) {
-            throw this.#handleError(2, this._errors[e.message] ?? e, 'bindToken')
+            throw this.handleError(2, this._errors[e.message] ?? e, 'bindToken')
         }
     }
 
@@ -442,90 +445,16 @@ export class RutokenDriver {
         this._errors[this._plugin.errorCodes.X509_CRL_PATH_VALIDATION_ERROR] = "Неправильный путь CRL"
     }
 
-    #deepEqual(object1, object2) {
-        const keys1 = Object.keys(object1)
-        const keys2 = Object.keys(object2)
 
-        if (keys1.length !== keys2.length) {
-            return false
-        }
 
-        for (const key of keys1) {
-            const val1 = object1[key]
-            const val2 = object2[key]
-            const areObjects = this.#isObject(val1) && this.#isObject(val2)
-            if (
-                areObjects && !this.#deepEqual(val1, val2) ||
-                !areObjects && val1 !== val2
-            ) {
-                return false
-            }
-        }
-        return true
-    }
-
-    #isObject(object) {
-        return object != null && typeof object === 'object'
-    }
-
-    #encode(input) {
-        let output = ""
-        let chr1, chr2, chr3, enc1, enc2, enc3, enc4
-        let i = 0
-        input = this.#utf8_encode(input)
-
-        while (i < input.length) {
-
-            chr1 = input.charCodeAt(i++)
-            chr2 = input.charCodeAt(i++)
-            chr3 = input.charCodeAt(i++)
-            enc1 = chr1 >> 2
-            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4)
-            enc3 = ((chr2 & 15) << 2) | (chr3 >> 6)
-            enc4 = chr3 & 63
-
-            if (isNaN(chr2)) {
-                enc3 = enc4 = 64
-            } else if (isNaN(chr3)) {
-                enc4 = 64
-            }
-            output = output + this._keyStr.charAt(enc1) + this._keyStr.charAt(enc2) + this._keyStr.charAt(enc3) + this._keyStr.charAt(enc4)
-        }
-        return output
-    }
-    #utf8_encode(input) {
-        let string = input.replace(/\r\n/g, "\n")
-        let utftext = ""
-
-        for (let n = 0; n < string.length; n++) {
-
-            let c = string.charCodeAt(n)
-
-            if (c < 128) {
-                utftext += String.fromCharCode(c)
-            }
-            else if ((c > 127) && (c < 2048)) {
-                utftext += String.fromCharCode((c >> 6) | 192)
-                utftext += String.fromCharCode((c & 63) | 128)
-            }
-            else {
-                utftext += String.fromCharCode((c >> 12) | 224)
-                utftext += String.fromCharCode(((c >> 6) & 63) | 128)
-                utftext += String.fromCharCode((c & 63) | 128)
-            }
-        }
-
-        return utftext;
-    }
-    #bytesToBase64(arrayBuffer) {
+    private bytesToBase64(arrayBuffer): string {
         return btoa(new Uint8Array(arrayBuffer).reduce(function (data, byte) {
             return data + String.fromCharCode(byte);
         }, ''));
-        // return btoa(String.fromCharCode.apply(null, new Uint8Array(arrayBuffer)));
-        // return btoa(String.fromCharCode(arrayBuffer));
+
     }
 
-    #handleError(code, message, method) {
+    private handleError(code, message, method): ICryptoDriverError {
         let error = {
             code,
             description: 'Неизвестная ошибка',

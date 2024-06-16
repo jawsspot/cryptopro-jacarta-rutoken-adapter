@@ -1,7 +1,8 @@
-import { encode } from './utils/encode';
+import { encode } from '../utils/encode';
 import { getCertificateInPem } from './utils/prepare-b64';
 import { IParsedCertificate } from '../interfaces/certificate.interface';
 import { IPluginData } from '../interfaces/plugin-data.interface';
+import { ICryptoDriverError } from '../interfaces/crypto-driver-error.interface';
 
 declare const cadesplugin;
 export class CryptoProDriver {
@@ -567,7 +568,7 @@ export class CryptoProDriver {
         }, ''));
     }
 
-    private handleError(code, message, method) {
+    private handleError(code, message, method): ICryptoDriverError {
         let error = {
             code: code,
             message: message,
