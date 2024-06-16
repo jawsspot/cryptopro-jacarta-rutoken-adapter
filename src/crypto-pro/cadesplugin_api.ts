@@ -246,6 +246,7 @@
             var generator = generatorFunc(Array.prototype.slice.call(arguments, 1));
             var onFulfilled = continuer.bind(continuer, "next");
             var onRejected = continuer.bind(continuer, "throw");
+
             return onFulfilled();
         }
 

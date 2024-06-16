@@ -1,16 +1,17 @@
+import { IParsedCertificate } from "../interfaces/certificate.interface";
 export declare class JacartaDriver {
     #private;
-    _plugin: any;
+    parsedCertificates: IParsedCertificate[];
     isPluginInstalled: boolean;
     isPluginLoaded: boolean;
-    pluginVersion: any;
-    _deviceList: any[];
-    _deviceMap: Map<any, any>;
-    _certList: any[];
-    parsedCertificates: any[];
-    _selectedCertificate: any;
-    _keyStr: string;
-    _callback: any;
+    pluginVersion: string;
+    private _plugin;
+    private _deviceList;
+    private _deviceMap;
+    private _certList;
+    private _selectedCertificate;
+    private _keyStr;
+    private _callback;
     isActualVersionPlugin(): Promise<{
         cryptoDriverType: number;
         isActualVersion: boolean;

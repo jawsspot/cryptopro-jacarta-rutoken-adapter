@@ -1,26 +1,24 @@
 import { IParsedCertificate } from "../interfaces/certificate.interface";
+import { IPluginData } from "../interfaces/plugin-data.interface";
 
 declare const JCWebClient2;
 export class JacartaDriver {
+    public parsedCertificates: IParsedCertificate[] = [];
 
-    _plugin
-    isPluginInstalled = false
-    isPluginLoaded = false
-    pluginVersion
-    _deviceList = []
-    _deviceMap = new Map()
-    _certList = []
-    public parsedCertificates: IParsedCertificate[] = []
-    _selectedCertificate
-    _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-    _callback
+    public isPluginInstalled = false;
+    public isPluginLoaded = false;
 
-    public async isActualVersionPlugin(): Promise<{
-        cryptoDriverType: number;
-        isActualVersion: boolean;
-        currentVersion: any;
-        actualVersion: string;
-    }> {
+    public pluginVersion: string;
+
+    private _plugin;
+    private _deviceList = [];
+    private _deviceMap = new Map()
+    private _certList = [];
+    private _selectedCertificate
+    private _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    private _callback;
+
+    public async isActualVersionPlugin(): Promise<IPluginData> {
         try {
             let actualVersion = '4.3.2';
             let currentPluginVersion = await this.pluginVersion
@@ -93,6 +91,7 @@ export class JacartaDriver {
             else {
                 dataToSign = this.#encode(data)
             }
+
             CMS = this._plugin.signBase64EncodedData({
                 args: {
                     contID: certificateId,
@@ -108,7 +107,8 @@ export class JacartaDriver {
                 throw reason;
             throw this.#handleError(2, reason.message, 'signCMS')
         }
-        console.log(CMS)
+        console.log(CMS);
+
         return CMS
     }
 

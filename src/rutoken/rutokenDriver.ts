@@ -1,25 +1,28 @@
 import { IParsedCertificate } from "../interfaces/certificate.interface";
+import { IPluginData } from "../interfaces/plugin-data.interface";
 import { rutoken } from "./rutoken";
 export class RutokenDriver {
+    public parsedCertificates: IParsedCertificate[] = []
 
-    #rutoken
-    #plugin
-    isPluginInstalled = false
-    isPluginLoaded = false
-    lastPluginVersion
-    #deviceList = []
-    #deviceMap = new Map()
-    #certList = []
-    parsedCertificates: IParsedCertificate[] = []
-    #errors = []
-    #selectedCertificate
-    #_keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    public isPluginInstalled = false;
+    public isPluginLoaded = false;
+
+    public pluginVersion: string;
+
+
+    private _rutoken
+    private _plugin: any
+    private _deviceList = []
+    private _deviceMap: Map<number, any> = new Map();
+    private _errors = [];
+    private _selectedCertificate
+    private _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 
     constructor() {
-        this.#rutoken = rutoken
+        this._rutoken = rutoken
     }
 
-    async isActualVersionPlugin() {
+    public async isActualVersionPlugin(): Promise<IPluginData> {
         try {
             let _this = this
             let currentPluginVersion;
@@ -39,75 +42,80 @@ export class RutokenDriver {
                 }
                 xhr.send()
             })
-            currentPluginVersion = this.#plugin.version.toString()
+            currentPluginVersion = this._plugin.version.toString()
 
             return {
                 cryptoDriverType: 2,
-                isActualVersion: this.#stringVersionCompare(this.lastPluginVersion, currentPluginVersion),
+                isActualVersion: this.stringVersionCompare(this.pluginVersion, currentPluginVersion),
                 currentVersion: currentPluginVersion,
-                actualVersion: this.lastPluginVersion
+                actualVersion: this.pluginVersion
             }
         }
+
         catch (err) {
             throw err
         }
     }
 
-    async loadPlugin() {
-        if (this.isPluginLoaded) return
-        try {
-            let isRutokenReady
+    public async loadPlugin(): Promise<void> {
+        if (this.isPluginLoaded) {
+            return
+        }
 
-            await this.#rutoken.ready
+        try {
+            let isRutokenReady: boolean;
+
+            await this._rutoken.ready;
 
             if (window.chrome || typeof window.InstallTrigger !== 'undefined') {
-                isRutokenReady = await this.#rutoken.isExtensionInstalled()
+                isRutokenReady = await this._rutoken.isExtensionInstalled()
             }
             else {
                 isRutokenReady = true
             }
             if (isRutokenReady) {
-                this.isPluginInstalled = await this.#rutoken.isPluginInstalled()
+                this.isPluginInstalled = await this._rutoken.isPluginInstalled()
             }
             if (!this.isPluginInstalled)
                 return
 
-            this.#plugin = await this.#rutoken.loadPlugin()
-            this.#loadErrorCodes()
-            await this.#initialize()
+            this._plugin = await this._rutoken.loadPlugin();
 
-            await this.#getLastRtPluginVersion()
+            this.loadErrorCodes();
+
+            await this.initialize()
+
+            await this.getLastRtPluginVersion()
 
 
-            if (this.#plugin)
+            if (this._plugin)
                 this.isPluginLoaded = true
         }
         catch (reason) {
             if (reason.method)
                 throw reason;
-            console.log(this.#errors[reason.message])
-            throw this.#handleError(6, this.#errors[reason.message] || reason.message, 'loadPlugin')
+            console.log(this._errors[reason.message])
+            throw this.#handleError(6, this._errors[reason.message] || reason.message, 'loadPlugin')
         }
     }
 
-    async reloadDevices() {
+    public async reloadDevices(): Promise<void> {
         try {
-            this.#certList = []
-            this.#deviceList = []
-            this.#deviceMap.clear
+            this._deviceList = []
+            this._deviceMap.clear();
             this.parsedCertificates = []
-            await this.#initialize()
+            await this.initialize()
         }
 
         catch (reason) {
             if (reason.method)
                 throw reason;
-            console.log(this.#errors[reason.message])
-            throw this.#handleError(3, this.#errors[reason.message] || reason.message, 'reloadDevices')
+            console.log(this._errors[reason.message])
+            throw this.#handleError(3, this._errors[reason.message] || reason.message, 'reloadDevices')
         }
     }
 
-    async signCMS(data, certificateId, deviceId) {
+    public async signCMS(data, certificateId, deviceId): Promise<string> {
         let dataToSign
         let CMS
 
@@ -132,29 +140,29 @@ export class RutokenDriver {
                 dataToSign = this.#encode(data)
             }
             console.log('before  bindToken if')
-            if (!await this.#bindToken(deviceId)) {
+            if (!await this.bindToken(deviceId)) {
                 console.log('return from bindToken if')
                 return
             }
 
-            CMS = await this.#plugin.sign(deviceId, certificateId, dataToSign, this.#plugin.DATA_FORMAT_BASE64, options)
+            CMS = await this._plugin.sign(deviceId, certificateId, dataToSign, this._plugin.DATA_FORMAT_BASE64, options)
 
             console.log(CMS)
 
             // Закрытие сессии
-            await this.#plugin.logout(deviceId)
+            await this._plugin.logout(deviceId)
         }
         catch (reason) {
 
             if (reason.code === 10) {
                 throw this.#handleError(2, reason.message, 'signCMS');
             }
-            throw this.#handleError(2, this.#errors[reason.message] || reason.message, 'signCMS')
+            throw this.#handleError(2, this._errors[reason.message] || reason.message, 'signCMS')
         }
         return CMS
     }
 
-    #stringVersionCompare(actualVersion, currentPluginVersion) {
+    private stringVersionCompare(actualVersion, currentPluginVersion): boolean {
         const actual = actualVersion.split('.');
         const current = currentPluginVersion.split('.');
         let isActual = true;
@@ -169,82 +177,85 @@ export class RutokenDriver {
     }
 
 
-    async #getLastRtPluginVersion() {
+    private async getLastRtPluginVersion(): Promise<void> {
         let _this = this
         const xhr = new XMLHttpRequest()
 
         xhr.open('GET', 'https://download.rutoken.ru/Rutoken_Plugin/Current/version.txt', true)
         xhr.onreadystatechange = async function () {
             if (xhr.readyState == 4 && xhr.status == 200) {
-                _this.lastPluginVersion = await this.response.split('Version: v.')[1].split('Release')[0].replace(/\s+/g, '')
+                _this.pluginVersion = await this.response.split('Version: v.')[1].split('Release')[0].replace(/\s+/g, '');
+
             }
         }
         xhr.send()
     }
 
-    async #initialize() {
-        await this.#getAllDevices()
-        await this.#getAllCertificates()
-        for (var [key, value] of this.#deviceMap) {
+    private async initialize() {
+        await this.getAllDevices();
+        await this.getAllCertificates();
+        for (var [key, value] of this._deviceMap) {
             for (let j = 0; j < value.length; j++) {
-                await this.#getCertificateInfo(key, value[j])
+                await this.getCertificateInfo(key, value[j])
             }
         }
     }
 
-    async #getAllDevices() {
+    private async getAllDevices() {
         try {
-            this.#deviceList = await this.#plugin.enumerateDevices();
-            return this.#deviceList
+            this._deviceList = await this._plugin.enumerateDevices();
+            return this._deviceList
         }
         catch (e) {
-            throw this.#handleError(3, this.#errors[e.message] || e.message, 'getAllDevices')
+            throw this.#handleError(3, this._errors[e.message] || e.message, 'getAllDevices')
         }
     }
 
-    async #getAllCertificates() {
+    private async getAllCertificates(): Promise<Map<number, any>> {
         try {
-            if (!this.#deviceList.length)
+            if (!this._deviceList.length)
                 return
 
-            for (let i = 0; i < this.#deviceList.length; i++) {
-                let certificate = await this.#plugin.enumerateCertificates(this.#deviceList[i], this.#plugin.CERT_CATEGORY_USER)
-                this.#deviceMap.set(this.#deviceList[i], certificate)
-                this.#certList.push(certificate)
+            for (let i = 0; i < this._deviceList.length; i++) {
+                console.log('device')
+                console.log(this._deviceList[i])
+                let certificate = await this._plugin.enumerateCertificates(this._deviceList[i], this._plugin.CERT_CATEGORY_USER)
+                this._deviceMap.set(this._deviceList[i], certificate);
+
             }
 
-            return this.#certList
+            return this._deviceMap
         }
         catch (e) {
-            throw this.#handleError(4, this.#errors[e.message] || e.message, 'getAllCertificates')
+            throw this.#handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
         }
     }
 
-    async #getCertificateInfo(deviceId, certificateId) {
+    private async getCertificateInfo(deviceId, certificateId): Promise<IParsedCertificate> {
         try {
-            this.#selectedCertificate = { "deviceId": deviceId, "certificateId": certificateId }
-            const certificate = await this.#plugin.parseCertificate(deviceId, certificateId);
+            this._selectedCertificate = { "deviceId": deviceId, "certificateId": certificateId }
+            const certificate = await this._plugin.parseCertificate(deviceId, certificateId);
 
-            return this.#parseCertificate(certificate)
+            return this.parseCertificate(certificate)
         }
         catch (e) {
             if (e.method)
                 throw e;
 
-            throw this.#handleError(4, this.#errors[e.message] || e.message, 'getAllCertificates')
+            throw this.#handleError(4, this._errors[e.message] || e.message, 'getAllCertificates')
         }
     }
 
-    async #parseCertificate(certificate) {
-        let inn = this.#getValueFromCertificate(certificate.subject, 'INN'),
-            ogrnip = this.#getValueFromCertificate(certificate.subject, 'OGRNIP'),
-            ogrn = this.#getValueFromCertificate(certificate.subject, 'OGRN'),
-            snils = this.#getValueFromCertificate(certificate.subject, 'SNILS'),
-            surname = this.#getValueFromCertificate(certificate.subject, 'surname'),
-            nameAndPatronymic = this.#getValueFromCertificate(certificate.subject, 'givenName'),
-            issuerCN = this.#getValueFromCertificate(certificate.issuer, 'commonName'),
-            ownerCN = this.#getValueFromCertificate(certificate.subject, 'commonName'),
-            innLe = this.#getValueFromCertificate(certificate.subject, 'INNLE') || inn,
+    private async parseCertificate(certificate): Promise<IParsedCertificate> {
+        let inn = this.getValueFromCertificate(certificate.subject, 'INN'),
+            ogrnip = this.getValueFromCertificate(certificate.subject, 'OGRNIP'),
+            ogrn = this.getValueFromCertificate(certificate.subject, 'OGRN'),
+            snils = this.getValueFromCertificate(certificate.subject, 'SNILS'),
+            surname = this.getValueFromCertificate(certificate.subject, 'surname'),
+            nameAndPatronymic = this.getValueFromCertificate(certificate.subject, 'givenName'),
+            issuerCN = this.getValueFromCertificate(certificate.issuer, 'commonName'),
+            ownerCN = this.getValueFromCertificate(certificate.subject, 'commonName'),
+            innLe = this.getValueFromCertificate(certificate.subject, 'INNLE') || inn,
             subjectString = '', issuerString = '';
 
         if (innLe.length > 0) {
@@ -283,19 +294,19 @@ export class RutokenDriver {
         }
 
         let now = new Date();
-        let certPem = await this.#plugin.getCertificate(this.#selectedCertificate.deviceId, this.#selectedCertificate.certificateId)
+        let certPem = await this._plugin.getCertificate(this._selectedCertificate.deviceId, this._selectedCertificate.certificateId)
         let parsedCertificate: IParsedCertificate = {
-            validToDate: this.#getDate(certificate.validNotAfter).toUTCString(),
-            validFromDate: this.#getDate(certificate.validNotBefore).toUTCString(),
+            validToDate: new Date(certificate.validNotAfter).toUTCString(),
+            validFromDate: new Date(certificate.validNotBefore).toUTCString(),
             subjectName: subjectString,
             issuerName: issuerString,
-            id: this.#selectedCertificate.certificateId,
-            isValid: now <= this.#getDate(certificate.validNotAfter) && now >= this.#getDate(certificate.validNotBefore),
+            id: this._selectedCertificate.certificateId,
+            isValid: now <= new Date(certificate.validNotAfter) && now >= new Date(certificate.validNotBefore),
             hasPrivateKey: true,
             serial: certificate.serialNumber,
             b64: certPem,
-            thumbprint: this.#selectedCertificate.certificateId.replace(/:/g, '').toUpperCase(),
-            deviceId: this.#selectedCertificate.deviceId
+            thumbprint: this._selectedCertificate.certificateId.replace(/:/g, '').toUpperCase(),
+            deviceId: this._selectedCertificate.deviceId
         }
         let isFoundParsed = false
         for (let k = 0; k < this.parsedCertificates.length; k++) {
@@ -306,9 +317,10 @@ export class RutokenDriver {
         if (!isFoundParsed)
             this.parsedCertificates.push(parsedCertificate)
 
-        return parsedCertificate
+        return parsedCertificate;
     }
-    #getValueFromCertificate(arr, key) {
+
+    private getValueFromCertificate(arr, key) {
 
         let i = 0, cnt = arr.length
 
@@ -320,126 +332,114 @@ export class RutokenDriver {
 
         return ''
     }
-    #getDate(date) {
-        if (this.#isIe8()) {
-            date = date.replace(/-/g, '/').replace('T', ' ');
-        }
 
-        return new Date(date);
-    }
-    #isIe8() {
-        let na = navigator.userAgent.toLowerCase(),
-            isIE = !/opera/.test(na) && /msie/.test(na),
-            docMode = document.documentMode;
 
-        return isIE && (/msie 8/.test(na) && docMode != 7 && docMode != 9 || docMode == 8);
 
-    }
-
-    async #bindToken(deviceId) {
+    private async bindToken(deviceId): Promise<boolean> {
         try {
-            let isLoggedIn = await this.#plugin.getDeviceInfo(deviceId, this.#plugin.TOKEN_INFO_IS_LOGGED_IN)
+            let isLoggedIn = await this._plugin.getDeviceInfo(deviceId, this._plugin.TOKEN_INFO_IS_LOGGED_IN)
 
             if (isLoggedIn)
                 return true
 
-            await this.#plugin.login(deviceId, prompt("Введите pin"))
+            await this._plugin.login(deviceId, prompt("Введите pin"))
 
             return true
         }
         catch (e) {
-            throw this.#handleError(2, this.#errors[e.message] ?? e, 'bindToken')
+            throw this.#handleError(2, this._errors[e.message] ?? e, 'bindToken')
         }
     }
-    #loadErrorCodes() {
-        this.#errors[this.#plugin.errorCodes.UNKNOWN_ERROR] = "Неизвестная ошибка"
-        this.#errors[this.#plugin.errorCodes.BAD_PARAMS] = "Неправильные параметры"
-        this.#errors[this.#plugin.errorCodes.NOT_ENOUGH_MEMORY] = "Недостаточно памяти"
-        this.#errors[this.#plugin.errorCodes.DEVICE_NOT_FOUND] = "Устройство не найдено"
-        this.#errors[this.#plugin.errorCodes.DEVICE_ERROR] = "Ошибка устройства"
-        this.#errors[this.#plugin.errorCodes.TOKEN_INVALID] = "Ошибка чтения/записи устройства. Возможно, устройство было извлечено. %device-step%"
-        this.#errors[this.#plugin.errorCodes.CERTIFICATE_CATEGORY_BAD] = "Недопустимый тип сертификата"
-        this.#errors[this.#plugin.errorCodes.CERTIFICATE_EXISTS] = "Сертификат уже существует на устройстве"
-        this.#errors[this.#plugin.errorCodes.CERTIFICATE_NOT_FOUND] = "Сертификат не найден"
-        this.#errors[this.#plugin.errorCodes.CERTIFICATE_HASH_NOT_UNIQUE] = "Хэш сертификата не уникален"
-        this.#errors[this.#plugin.errorCodes.CA_CERTIFICATES_NOT_FOUND] = "Корневые сертификаты не найдены"
-        this.#errors[this.#plugin.errorCodes.CERTIFICATE_VERIFICATION_ERROR] = "Ошибка проверки сертификата"
-        this.#errors[this.#plugin.errorCodes.PKCS11_LOAD_FAILED] = "Не удалось загрузить PKCS#11 библиотеку"
-        this.#errors[this.#plugin.errorCodes.PIN_LENGTH_INVALID] = "Некорректная длина PIN-кода"
-        this.#errors[this.#plugin.errorCodes.PIN_INCORRECT] = "Некорректный PIN-код"
-        this.#errors[this.#plugin.errorCodes.PIN_LOCKED] = "PIN-код заблокирован"
-        this.#errors[this.#plugin.errorCodes.PIN_CHANGED] = "PIN-код был изменен"
-        this.#errors[this.#plugin.errorCodes.SESSION_INVALID] = "Состояние токена изменилось"
-        this.#errors[this.#plugin.errorCodes.USER_NOT_LOGGED_IN] = "Выполните вход на устройство"
-        this.#errors[this.#plugin.errorCodes.ALREADY_LOGGED_IN] = "Вход на устройство уже был выполнен"
-        this.#errors[this.#plugin.errorCodes.ATTRIBUTE_READ_ONLY] = "Свойство не может быть изменено"
-        this.#errors[this.#plugin.errorCodes.KEY_NOT_FOUND] = "Соответствующая сертификату ключевая пара не найдена"
-        this.#errors[this.#plugin.errorCodes.KEY_ID_NOT_UNIQUE] = "Идентификатор ключевой пары не уникален"
-        this.#errors[this.#plugin.errorCodes.CEK_NOT_AUTHENTIC] = "Выбран неправильный ключ"
-        this.#errors[this.#plugin.errorCodes.KEY_LABEL_NOT_UNIQUE] = "Метка ключевой пары не уникальна"
-        this.#errors[this.#plugin.errorCodes.WRONG_KEY_TYPE] = "Неправильный тип ключа"
-        this.#errors[this.#plugin.errorCodes.LICENCE_READ_ONLY] = "Лицензия доступна только для чтения"
-        this.#errors[this.#plugin.errorCodes.DATA_INVALID] = "Неверные данные"
-        this.#errors[this.#plugin.errorCodes.UNSUPPORTED_BY_TOKEN] = "Операция не поддерживается токеном"
-        this.#errors[this.#plugin.errorCodes.KEY_FUNCTION_NOT_PERMITTED] = "Операция запрещена для данного типа ключа"
-        this.#errors[this.#plugin.errorCodes.BASE64_DECODE_FAILED] = "Ошибка декодирования даных из BASE64"
-        this.#errors[this.#plugin.errorCodes.PEM_ERROR] = "Ошибка разбора PEM"
-        this.#errors[this.#plugin.errorCodes.ASN1_ERROR] = "Ошибка декодирования ASN1 структуры"
-        this.#errors[this.#plugin.errorCodes.FUNCTION_REJECTED] = "Операция отклонена пользователем"
-        this.#errors[this.#plugin.errorCodes.FUNCTION_FAILED] = "Невозможно выполнить операцию"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_GET_ISSUER_CERT] = "Невозможно получить сертификат подписанта"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_GET_CRL] = "Невозможно получить CRL"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_DECRYPT_CERT_SIGNATURE] = "Невозможно расшифровать подпись сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_DECRYPT_CRL_SIGNATURE] = "Невозможно расшифровать подпись CRL"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY] = "Невозможно раскодировать открытый ключ эмитента"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_SIGNATURE_FAILURE] = "Неверная подпись сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_CRL_SIGNATURE_FAILURE] = "Неверная подпись CRL"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_NOT_YET_VALID] = "Срок действия сертификата еще не начался"
-        this.#errors[this.#plugin.errorCodes.X509_CRL_NOT_YET_VALID] = "Срок действия CRL еще не начался"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_HAS_EXPIRED] = "Срок действия сертификата истек"
-        this.#errors[this.#plugin.errorCodes.X509_CRL_HAS_EXPIRED] = "Срок действия CRL истек"
-        this.#errors[this.#plugin.errorCodes.X509_ERROR_IN_CERT_NOT_BEFORE_FIELD] = "Некорректные данные в поле \"notBefore\" у сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_ERROR_IN_CERT_NOT_AFTER_FIELD] = "Некорректные данные в поле \"notAfter\" у сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_ERROR_IN_CRL_LAST_UPDATE_FIELD] = "Некорректные данные в поле \"lastUpdate\" у CRL"
-        this.#errors[this.#plugin.errorCodes.X509_ERROR_IN_CRL_NEXT_UPDATE_FIELD] = "Некорректные данные в поле \"nextUpdate\" у CRL"
-        this.#errors[this.#plugin.errorCodes.X509_OUT_OF_MEM] = "Нехватает памяти"
-        this.#errors[this.#plugin.errorCodes.X509_DEPTH_ZERO_SELF_SIGNED_CERT] = "Недоверенный самоподписанный сертификат"
-        this.#errors[this.#plugin.errorCodes.X509_SELF_SIGNED_CERT_IN_CHAIN] = "В цепочке обнаружен недоверенный самоподписанный сертификат"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_GET_ISSUER_CERT_LOCALLY] = "Невозможно получить локальный сертификат подписанта"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_VERIFY_LEAF_SIGNATURE] = "Невозможно проверить первый сертификат"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_CHAIN_TOO_LONG] = "Слишком длинная цепочка сертификатов"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_REVOKED] = "Сертификат отозван"
-        this.#errors[this.#plugin.errorCodes.X509_INVALID_CA] = "Неверный корневой сертификат"
-        this.#errors[this.#plugin.errorCodes.X509_INVALID_NON_CA] = "Неверный некорневой сертфикат, помеченный как корневой"
-        this.#errors[this.#plugin.errorCodes.X509_PATH_LENGTH_EXCEEDED] = "Превышена длина пути"
-        this.#errors[this.#plugin.errorCodes.X509_PROXY_PATH_LENGTH_EXCEEDED] = "Превышина длина пути прокси"
-        this.#errors[this.#plugin.errorCodes.X509_PROXY_CERTIFICATES_NOT_ALLOWED] = "Проксирующие сертификаты недопустимы"
-        this.#errors[this.#plugin.errorCodes.X509_INVALID_PURPOSE] = "Неподдерживаемое назначение сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_UNTRUSTED] = "Недоверенный сертификат"
-        this.#errors[this.#plugin.errorCodes.X509_CERT_REJECTED] = "Сертифкат отклонен"
-        this.#errors[this.#plugin.errorCodes.X509_APPLICATION_VERIFICATION] = "Ошибка проверки приложения"
-        this.#errors[this.#plugin.errorCodes.X509_SUBJECT_ISSUER_MISMATCH] = "Несовпадения субъекта и эмитента"
-        this.#errors[this.#plugin.errorCodes.X509_AKID_SKID_MISMATCH] = "Несовпадение идентификатора ключа у субьекта и доверенного центра"
-        this.#errors[this.#plugin.errorCodes.X509_AKID_ISSUER_SERIAL_MISMATCH] = "Несовпадение серийного номера субьекта и доверенного центра"
-        this.#errors[this.#plugin.errorCodes.X509_KEYUSAGE_NO_CERTSIGN] = "Ключ не может быть использован для подписи сертификатов"
-        this.#errors[this.#plugin.errorCodes.X509_UNABLE_TO_GET_CRL_ISSUER] = "Невозможно получить CRL подписанта"
-        this.#errors[this.#plugin.errorCodes.X509_UNHANDLED_CRITICAL_EXTENSION] = "Неподдерживаемое расширение"
-        this.#errors[this.#plugin.errorCodes.X509_KEYUSAGE_NO_CRL_SIGN] = "Ключ не может быть использован для подписи CRL"
-        this.#errors[this.#plugin.errorCodes.X509_KEYUSAGE_NO_DIGITAL_SIGNATURE] = "Ключ не может быть использован для цифровой подписи"
-        this.#errors[this.#plugin.errorCodes.X509_UNHANDLED_CRITICAL_CRL_EXTENSION] = "Неподдерживаемое расширение CRL"
-        this.#errors[this.#plugin.errorCodes.X509_INVALID_EXTENSION] = "Неверное или некорректное расширение сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_INVALID_POLICY_EXTENSION] = "Неверное или некорректное расширение политик сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_NO_EXPLICIT_POLICY] = "Явные политики отсутствуют"
-        this.#errors[this.#plugin.errorCodes.X509_DIFFERENT_CRL_SCOPE] = "Другая область CRL"
-        this.#errors[this.#plugin.errorCodes.X509_UNSUPPORTED_EXTENSION_FEATURE] = "Неподдерживаемое расширение возможностей"
-        this.#errors[this.#plugin.errorCodes.X509_UNNESTED_RESOURCE] = "RFC 3779 неправильное наследование ресурсов"
-        this.#errors[this.#plugin.errorCodes.X509_PERMITTED_VIOLATION] = "Неправильная структура сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_EXCLUDED_VIOLATION] = "Неправильная структура сертфиката"
-        this.#errors[this.#plugin.errorCodes.X509_SUBTREE_MINMAX] = "Неправильная структура сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_UNSUPPORTED_CONSTRAINT_TYPE] = "Неправильная структура сертфиката"
-        this.#errors[this.#plugin.errorCodes.X509_UNSUPPORTED_CONSTRAINT_SYNTAX] = "Неправильная структура сертификата"
-        this.#errors[this.#plugin.errorCodes.X509_UNSUPPORTED_NAME_SYNTAX] = "Неправильная структура сертфиката"
-        this.#errors[this.#plugin.errorCodes.X509_CRL_PATH_VALIDATION_ERROR] = "Неправильный путь CRL"
+
+    private loadErrorCodes() {
+        this._errors[this._plugin.errorCodes.UNKNOWN_ERROR] = "Неизвестная ошибка"
+        this._errors[this._plugin.errorCodes.BAD_PARAMS] = "Неправильные параметры"
+        this._errors[this._plugin.errorCodes.NOT_ENOUGH_MEMORY] = "Недостаточно памяти"
+        this._errors[this._plugin.errorCodes.DEVICE_NOT_FOUND] = "Устройство не найдено"
+        this._errors[this._plugin.errorCodes.DEVICE_ERROR] = "Ошибка устройства"
+        this._errors[this._plugin.errorCodes.TOKEN_INVALID] = "Ошибка чтения/записи устройства. Возможно, устройство было извлечено. %device-step%"
+        this._errors[this._plugin.errorCodes.CERTIFICATE_CATEGORY_BAD] = "Недопустимый тип сертификата"
+        this._errors[this._plugin.errorCodes.CERTIFICATE_EXISTS] = "Сертификат уже существует на устройстве"
+        this._errors[this._plugin.errorCodes.CERTIFICATE_NOT_FOUND] = "Сертификат не найден"
+        this._errors[this._plugin.errorCodes.CERTIFICATE_HASH_NOT_UNIQUE] = "Хэш сертификата не уникален"
+        this._errors[this._plugin.errorCodes.CA_CERTIFICATES_NOT_FOUND] = "Корневые сертификаты не найдены"
+        this._errors[this._plugin.errorCodes.CERTIFICATE_VERIFICATION_ERROR] = "Ошибка проверки сертификата"
+        this._errors[this._plugin.errorCodes.PKCS11_LOAD_FAILED] = "Не удалось загрузить PKCS#11 библиотеку"
+        this._errors[this._plugin.errorCodes.PIN_LENGTH_INVALID] = "Некорректная длина PIN-кода"
+        this._errors[this._plugin.errorCodes.PIN_INCORRECT] = "Некорректный PIN-код"
+        this._errors[this._plugin.errorCodes.PIN_LOCKED] = "PIN-код заблокирован"
+        this._errors[this._plugin.errorCodes.PIN_CHANGED] = "PIN-код был изменен"
+        this._errors[this._plugin.errorCodes.SESSION_INVALID] = "Состояние токена изменилось"
+        this._errors[this._plugin.errorCodes.USER_NOT_LOGGED_IN] = "Выполните вход на устройство"
+        this._errors[this._plugin.errorCodes.ALREADY_LOGGED_IN] = "Вход на устройство уже был выполнен"
+        this._errors[this._plugin.errorCodes.ATTRIBUTE_READ_ONLY] = "Свойство не может быть изменено"
+        this._errors[this._plugin.errorCodes.KEY_NOT_FOUND] = "Соответствующая сертификату ключевая пара не найдена"
+        this._errors[this._plugin.errorCodes.KEY_ID_NOT_UNIQUE] = "Идентификатор ключевой пары не уникален"
+        this._errors[this._plugin.errorCodes.CEK_NOT_AUTHENTIC] = "Выбран неправильный ключ"
+        this._errors[this._plugin.errorCodes.KEY_LABEL_NOT_UNIQUE] = "Метка ключевой пары не уникальна"
+        this._errors[this._plugin.errorCodes.WRONG_KEY_TYPE] = "Неправильный тип ключа"
+        this._errors[this._plugin.errorCodes.LICENCE_READ_ONLY] = "Лицензия доступна только для чтения"
+        this._errors[this._plugin.errorCodes.DATA_INVALID] = "Неверные данные"
+        this._errors[this._plugin.errorCodes.UNSUPPORTED_BY_TOKEN] = "Операция не поддерживается токеном"
+        this._errors[this._plugin.errorCodes.KEY_FUNCTION_NOT_PERMITTED] = "Операция запрещена для данного типа ключа"
+        this._errors[this._plugin.errorCodes.BASE64_DECODE_FAILED] = "Ошибка декодирования даных из BASE64"
+        this._errors[this._plugin.errorCodes.PEM_ERROR] = "Ошибка разбора PEM"
+        this._errors[this._plugin.errorCodes.ASN1_ERROR] = "Ошибка декодирования ASN1 структуры"
+        this._errors[this._plugin.errorCodes.FUNCTION_REJECTED] = "Операция отклонена пользователем"
+        this._errors[this._plugin.errorCodes.FUNCTION_FAILED] = "Невозможно выполнить операцию"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_GET_ISSUER_CERT] = "Невозможно получить сертификат подписанта"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_GET_CRL] = "Невозможно получить CRL"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_DECRYPT_CERT_SIGNATURE] = "Невозможно расшифровать подпись сертификата"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_DECRYPT_CRL_SIGNATURE] = "Невозможно расшифровать подпись CRL"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY] = "Невозможно раскодировать открытый ключ эмитента"
+        this._errors[this._plugin.errorCodes.X509_CERT_SIGNATURE_FAILURE] = "Неверная подпись сертификата"
+        this._errors[this._plugin.errorCodes.X509_CRL_SIGNATURE_FAILURE] = "Неверная подпись CRL"
+        this._errors[this._plugin.errorCodes.X509_CERT_NOT_YET_VALID] = "Срок действия сертификата еще не начался"
+        this._errors[this._plugin.errorCodes.X509_CRL_NOT_YET_VALID] = "Срок действия CRL еще не начался"
+        this._errors[this._plugin.errorCodes.X509_CERT_HAS_EXPIRED] = "Срок действия сертификата истек"
+        this._errors[this._plugin.errorCodes.X509_CRL_HAS_EXPIRED] = "Срок действия CRL истек"
+        this._errors[this._plugin.errorCodes.X509_ERROR_IN_CERT_NOT_BEFORE_FIELD] = "Некорректные данные в поле \"notBefore\" у сертификата"
+        this._errors[this._plugin.errorCodes.X509_ERROR_IN_CERT_NOT_AFTER_FIELD] = "Некорректные данные в поле \"notAfter\" у сертификата"
+        this._errors[this._plugin.errorCodes.X509_ERROR_IN_CRL_LAST_UPDATE_FIELD] = "Некорректные данные в поле \"lastUpdate\" у CRL"
+        this._errors[this._plugin.errorCodes.X509_ERROR_IN_CRL_NEXT_UPDATE_FIELD] = "Некорректные данные в поле \"nextUpdate\" у CRL"
+        this._errors[this._plugin.errorCodes.X509_OUT_OF_MEM] = "Нехватает памяти"
+        this._errors[this._plugin.errorCodes.X509_DEPTH_ZERO_SELF_SIGNED_CERT] = "Недоверенный самоподписанный сертификат"
+        this._errors[this._plugin.errorCodes.X509_SELF_SIGNED_CERT_IN_CHAIN] = "В цепочке обнаружен недоверенный самоподписанный сертификат"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_GET_ISSUER_CERT_LOCALLY] = "Невозможно получить локальный сертификат подписанта"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_VERIFY_LEAF_SIGNATURE] = "Невозможно проверить первый сертификат"
+        this._errors[this._plugin.errorCodes.X509_CERT_CHAIN_TOO_LONG] = "Слишком длинная цепочка сертификатов"
+        this._errors[this._plugin.errorCodes.X509_CERT_REVOKED] = "Сертификат отозван"
+        this._errors[this._plugin.errorCodes.X509_INVALID_CA] = "Неверный корневой сертификат"
+        this._errors[this._plugin.errorCodes.X509_INVALID_NON_CA] = "Неверный некорневой сертфикат, помеченный как корневой"
+        this._errors[this._plugin.errorCodes.X509_PATH_LENGTH_EXCEEDED] = "Превышена длина пути"
+        this._errors[this._plugin.errorCodes.X509_PROXY_PATH_LENGTH_EXCEEDED] = "Превышина длина пути прокси"
+        this._errors[this._plugin.errorCodes.X509_PROXY_CERTIFICATES_NOT_ALLOWED] = "Проксирующие сертификаты недопустимы"
+        this._errors[this._plugin.errorCodes.X509_INVALID_PURPOSE] = "Неподдерживаемое назначение сертификата"
+        this._errors[this._plugin.errorCodes.X509_CERT_UNTRUSTED] = "Недоверенный сертификат"
+        this._errors[this._plugin.errorCodes.X509_CERT_REJECTED] = "Сертифкат отклонен"
+        this._errors[this._plugin.errorCodes.X509_APPLICATION_VERIFICATION] = "Ошибка проверки приложения"
+        this._errors[this._plugin.errorCodes.X509_SUBJECT_ISSUER_MISMATCH] = "Несовпадения субъекта и эмитента"
+        this._errors[this._plugin.errorCodes.X509_AKID_SKID_MISMATCH] = "Несовпадение идентификатора ключа у субьекта и доверенного центра"
+        this._errors[this._plugin.errorCodes.X509_AKID_ISSUER_SERIAL_MISMATCH] = "Несовпадение серийного номера субьекта и доверенного центра"
+        this._errors[this._plugin.errorCodes.X509_KEYUSAGE_NO_CERTSIGN] = "Ключ не может быть использован для подписи сертификатов"
+        this._errors[this._plugin.errorCodes.X509_UNABLE_TO_GET_CRL_ISSUER] = "Невозможно получить CRL подписанта"
+        this._errors[this._plugin.errorCodes.X509_UNHANDLED_CRITICAL_EXTENSION] = "Неподдерживаемое расширение"
+        this._errors[this._plugin.errorCodes.X509_KEYUSAGE_NO_CRL_SIGN] = "Ключ не может быть использован для подписи CRL"
+        this._errors[this._plugin.errorCodes.X509_KEYUSAGE_NO_DIGITAL_SIGNATURE] = "Ключ не может быть использован для цифровой подписи"
+        this._errors[this._plugin.errorCodes.X509_UNHANDLED_CRITICAL_CRL_EXTENSION] = "Неподдерживаемое расширение CRL"
+        this._errors[this._plugin.errorCodes.X509_INVALID_EXTENSION] = "Неверное или некорректное расширение сертификата"
+        this._errors[this._plugin.errorCodes.X509_INVALID_POLICY_EXTENSION] = "Неверное или некорректное расширение политик сертификата"
+        this._errors[this._plugin.errorCodes.X509_NO_EXPLICIT_POLICY] = "Явные политики отсутствуют"
+        this._errors[this._plugin.errorCodes.X509_DIFFERENT_CRL_SCOPE] = "Другая область CRL"
+        this._errors[this._plugin.errorCodes.X509_UNSUPPORTED_EXTENSION_FEATURE] = "Неподдерживаемое расширение возможностей"
+        this._errors[this._plugin.errorCodes.X509_UNNESTED_RESOURCE] = "RFC 3779 неправильное наследование ресурсов"
+        this._errors[this._plugin.errorCodes.X509_PERMITTED_VIOLATION] = "Неправильная структура сертификата"
+        this._errors[this._plugin.errorCodes.X509_EXCLUDED_VIOLATION] = "Неправильная структура сертфиката"
+        this._errors[this._plugin.errorCodes.X509_SUBTREE_MINMAX] = "Неправильная структура сертификата"
+        this._errors[this._plugin.errorCodes.X509_UNSUPPORTED_CONSTRAINT_TYPE] = "Неправильная структура сертфиката"
+        this._errors[this._plugin.errorCodes.X509_UNSUPPORTED_CONSTRAINT_SYNTAX] = "Неправильная структура сертификата"
+        this._errors[this._plugin.errorCodes.X509_UNSUPPORTED_NAME_SYNTAX] = "Неправильная структура сертфиката"
+        this._errors[this._plugin.errorCodes.X509_CRL_PATH_VALIDATION_ERROR] = "Неправильный путь CRL"
     }
 
     #deepEqual(object1, object2) {
@@ -489,7 +489,7 @@ export class RutokenDriver {
             } else if (isNaN(chr3)) {
                 enc4 = 64
             }
-            output = output + this.#_keyStr.charAt(enc1) + this.#_keyStr.charAt(enc2) + this.#_keyStr.charAt(enc3) + this.#_keyStr.charAt(enc4)
+            output = output + this._keyStr.charAt(enc1) + this._keyStr.charAt(enc2) + this._keyStr.charAt(enc3) + this._keyStr.charAt(enc4)
         }
         return output
     }

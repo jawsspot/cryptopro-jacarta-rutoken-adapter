@@ -16,12 +16,12 @@ var _JacartaDriver_instances, _JacartaDriver_loadJC, _JacartaDriver_addListener,
 export class JacartaDriver {
     constructor() {
         _JacartaDriver_instances.add(this);
+        this.parsedCertificates = [];
         this.isPluginInstalled = false;
         this.isPluginLoaded = false;
         this._deviceList = [];
         this._deviceMap = new Map();
         this._certList = [];
-        this.parsedCertificates = [];
         this._keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
     }
     isActualVersionPlugin() {
@@ -315,14 +315,14 @@ _JacartaDriver_instances = new WeakSet(), _JacartaDriver_loadJC = function _Jaca
     let now = new Date();
     let preparedSerialNumber = this._bufferSerialToHex(certificate.serial);
     let parsedCertificate = ({
-        ValidToDate: certificate.date.to,
-        ValidFromDate: certificate.date.from,
-        SubjectName: subjectString,
-        IssuerName: issuerString,
-        Thumbprint: '',
+        validToDate: certificate.date.to,
+        validFromDate: certificate.date.from,
+        subjectName: subjectString,
+        issuerName: issuerString,
+        thumbprint: '',
         id: this._selectedCertificate.certificateId,
-        IsValid: now >= certificate.date.from && now <= certificate.date.to,
-        HasPrivateKey: true,
+        isValid: now >= certificate.date.from && now <= certificate.date.to,
+        hasPrivateKey: true,
         serial: preparedSerialNumber,
         b64: this._getCertificateInPem(this._selectedCertificate.deviceId, this._selectedCertificate.certificateId),
         deviceId: this._selectedCertificate.deviceId

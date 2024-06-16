@@ -1,8 +1,7 @@
-import { isObject } from './utils/deep-equal';
-import { deepEqual } from './utils/deep-equal';
 import { encode } from './utils/encode';
 import { getCertificateInPem } from './utils/prepare-b64';
 import { IParsedCertificate } from '../interfaces/certificate.interface';
+import { IPluginData } from '../interfaces/plugin-data.interface';
 
 declare const cadesplugin;
 export class CryptoProDriver {
@@ -11,16 +10,14 @@ export class CryptoProDriver {
         return this._parsedCertificateList;
     }
     public isPluginLoaded: boolean = false
-    public isPluginWorked: boolean = false
+    public isPluginWorked: boolean = false;
+    public pluginVersion: string;
     public isActualVersion: boolean = false
 
     private _parsedCertificateList: Array<IParsedCertificate> = []
     private _plugin: any;
-    private _isAsync: boolean;
-    private _currentPluginVersion: string;
     private _scpName: string;
     private _markedThumbprintContainer: Array<string> = [];
-    private _isPluginEnabled: boolean;
     private _deviceMap: Map<number, Array<any>> = new Map();
     private _certList: Array<any> = []
 
@@ -29,7 +26,7 @@ export class CryptoProDriver {
         this._plugin = cadesplugin;
     }
 
-    async reloadDevices() {
+    async reloadDevices(): Promise<void> {
         this._certList = []
         this._deviceMap.clear
         this._parsedCertificateList = [];
@@ -37,15 +34,15 @@ export class CryptoProDriver {
         await this.#initialize()
     }
 
-    async isActualVersionPlugin() {
+    public async isActualVersionPlugin(): Promise<IPluginData> {
 
         let _this = this;
         let currentPluginVersion = '';
         let actualVersion;
 
         await new Promise(function (resolve, reject) {
-            const xmlhttp = _this.#getXmlHttp()
-            xmlhttp.open("GET", "https://www.cryptopro.ru/sites/default/files/products/cades/latest_2_0.txt", true)
+            const xmlhttp = new XMLHttpRequest()
+
             xmlhttp.timeout = 1000
             xmlhttp.onreadystatechange = async function () {
                 if (xmlhttp.readyState === 4) {
@@ -53,7 +50,7 @@ export class CryptoProDriver {
                         actualVersion = xmlhttp.responseText;
                         resolve(void 0);
                     }
-                    reject(_this.#handleError(5, `Ошибка при запросе актуальной версии плагина`, 'isActualVersionPlugin'))
+                    reject(_this.handleError(5, `Ошибка при запросе актуальной версии плагина`, 'isActualVersionPlugin'))
                 }
             }
             xmlhttp.send(null)
@@ -61,12 +58,12 @@ export class CryptoProDriver {
 
         await _this._plugin.CreateObjectAsync("CAdESCOM.About")
             .catch(() => {
-                throw _this.#handleError(5, `Ошибка при получении информации о текущем плагине`, 'isActualVersionPlugin')
+                throw _this.handleError(5, `Ошибка при получении информации о текущем плагине`, 'isActualVersionPlugin')
             })
             .then((value) => value.Version)
             .then((version) => currentPluginVersion = version)
 
-        this.isActualVersion = _this.#stringVersionCompare(actualVersion, currentPluginVersion)
+        this.isActualVersion = _this.stringVersionCompare(actualVersion, currentPluginVersion)
         console.timeEnd('isActualVersionPlugin')
 
         return {
@@ -77,47 +74,40 @@ export class CryptoProDriver {
         }
     }
 
-    async loadPlugin() {
+    public async loadPlugin(): Promise<void> {
         if (this.isPluginLoaded) return
         try {
             this._plugin.set_log_level(this._plugin.LOG_LEVEL_ERROR)
             const canAsync = !!this._plugin.CreateObjectAsync
             console.log(`canAsync: ${canAsync}`);
 
-            if (canAsync) {
-                this._isAsync = true
-                await this.#checkForPlugIn_Async()
 
-            } else {
-                this.#checkForPlugIn_NPAPI()
-            }
+
+            await this.checkForPlugIn_Async()
+
+
             await this.#initialize()
         }
 
         catch (err) {
             if (err.method)
                 throw err;
-            throw this.#handleError(6, `Ошибка при загрузке плагина`, 'loadPlugin')
+            throw this.handleError(6, `Ошибка при загрузке плагина`, 'loadPlugin')
         }
     }
 
-    async signCMS(data, certificateId, deviceId) {
+    public async signCMS(data, certificateId, deviceId): Promise<string> {
         try {
-            if (this._isAsync) {
-                return await this.#signCMSAsync(data, certificateId, deviceId)
-
-            } else {
-                return this.#signCMSNPAPI(data, certificateId, deviceId)
-            }
+            return await this.signCMSAsync(data, certificateId, deviceId)
         }
         catch (err) {
             if (err.method)
                 throw err;
-            throw this.#handleError(2, `Ошибка при подписи`, 'loadPlugin')
+            throw this.handleError(2, `Ошибка при подписи`, 'loadPlugin')
         }
     }
 
-    #stringVersionCompare(actualVersion, currentPluginVersion) {
+    private stringVersionCompare(actualVersion: string, currentPluginVersion: string) {
         const actual = actualVersion.split('.');
         const current = currentPluginVersion.split('.');
 
@@ -138,123 +128,15 @@ export class CryptoProDriver {
         return true
     }
 
-    #makeVersionString(oVer) {
-        let strVer
-        if (typeof (oVer) == "string")
-            return oVer
-        else
-            return oVer.MajorVersion + "." + oVer.MinorVersion + "." + oVer.BuildVersion
-    }
+    // #makeVersionString(oVer) {
+    //     let strVer
+    //     if (typeof (oVer) == "string")
+    //         return oVer
+    //     else
+    //         return oVer.MajorVersion + "." + oVer.MinorVersion + "." + oVer.BuildVersion
+    // }
 
-    #versionCompare_NPAPI(StringVersion, ObjectVersion) {
-        if (typeof (ObjectVersion) == "string")
-            return -1
-        const arr = StringVersion.split('.')
-
-        if (ObjectVersion.MajorVersion == parseInt(arr[0])) {
-            if (ObjectVersion.MinorVersion == parseInt(arr[1])) {
-                if (ObjectVersion.BuildVersion == parseInt(arr[2])) {
-                    return 0
-                } else if (ObjectVersion.BuildVersion < parseInt(arr[2])) {
-                    return -1
-                }
-            } else if (ObjectVersion.MinorVersion < parseInt(arr[1])) {
-                return -1
-            }
-        } else if (ObjectVersion.MajorVersion < parseInt(arr[0])) {
-            return -1
-        }
-
-        return 1
-    }
-
-    #getLatestVersion_NPAPI(currentPluginVersion) {
-        const _this = this
-        const xmlhttp = this.#getXmlHttp()
-        try {
-            xmlhttp.open("GET", "https://www.cryptopro.ru/sites/default/files/products/cades/latest_2_0.txt", true)
-            xmlhttp.timeout = 1000
-            xmlhttp.onreadystatechange = function () {
-                let pluginBaseVersion
-                if (xmlhttp.readyState == 4) {
-                    if (xmlhttp.status == 200) {
-                        pluginBaseVersion = xmlhttp.responseText
-                        if (_this.isPluginWorked) { // плагин работает, объекты создаются
-                            if (_this.#versionCompare_NPAPI(pluginBaseVersion, currentPluginVersion) < 0) {
-                                _this.isActualVersion = false
-                                console.log("Actual version of plugin is: " + pluginBaseVersion)
-                            }
-                        } else { // плагин не работает, объекты не создаются
-                            if (_this.isPluginLoaded) { // плагин загружен
-                                if (!_this._isPluginEnabled) { // плагин загружен, но отключен
-                                    console.log("Plugin is not enabled in web browser")
-                                } else { // плагин загружен и включен, но объекты не создаются
-                                    console.log("Check browser settings for plugin correct work")
-                                }
-                            } else { // плагин не загружен
-                                _this.isPluginLoaded = false
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        catch (err) {
-            _this.isActualVersion = true
-            console.log("Couldn't check plugin version")
-        }
-        xmlhttp.send()
-    }
-
-    #checkForPlugIn_NPAPI() {
-        let currentPluginVersion
-        try {
-            const oAbout = this._plugin.CreateObject("CAdESCOM.About")
-            this.isPluginLoaded = true
-            this._isPluginEnabled = true
-            this.isPluginWorked = true
-
-            // Это значение будет проверяться сервером при загрузке демо-страницы
-            currentPluginVersion = oAbout.PluginVersion
-            if (typeof (currentPluginVersion) == "undefined")
-                currentPluginVersion = oAbout.Version
-            this._currentPluginVersion = this.#makeVersionString(currentPluginVersion)
-
-        } catch (err) {
-            // Объект создать не удалось, проверим, установлен ли
-            // вообще плагин. Такая возможность есть не во всех браузерах
-            const mimetype = navigator.mimeTypes["application/x-cades"]
-            if (mimetype) {
-                this.isPluginLoaded = true
-                const plugin = mimetype.enabledPlugin
-                if (plugin) {
-                    this._isPluginEnabled = true
-                }
-            }
-        }
-        this.#getLatestVersion_NPAPI(currentPluginVersion)
-
-    }
-
-
-    #getXmlHttp() {
-        let xmlhttp
-        try {
-            xmlhttp = new ActiveXObject("Msxml2.XMLHTTP")
-        } catch (e) {
-            try {
-                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP")
-            } catch (E) {
-                xmlhttp = false
-            }
-        }
-        if (!xmlhttp && typeof XMLHttpRequest != 'undefined') {
-            xmlhttp = new XMLHttpRequest()
-        }
-        return xmlhttp
-    }
-
-    async #checkForPlugIn_Async() {
+    private async checkForPlugIn_Async() {
         const _this = this
         let currentPluginVersion
         await this._plugin
@@ -263,8 +145,7 @@ export class CryptoProDriver {
                 try {
                     let oAbout = yield _this._plugin.CreateObjectAsync("CAdESCOM.About")
                     currentPluginVersion = yield oAbout.PluginVersion
-                    _this.#getLatestVersion_Async(currentPluginVersion).then(() => {
-                        _this._isPluginEnabled = true
+                    _this.getLatestVersion_Async(currentPluginVersion).then(() => {
                         _this.isPluginLoaded = true
                         _this.isPluginWorked = true
                         return args[0]()
@@ -273,7 +154,6 @@ export class CryptoProDriver {
                 }
                 catch (reason) {
                     console.log(reason)
-                    _this._isPluginEnabled = false
                     _this.isPluginLoaded = false
                     _this.isPluginWorked = false
                     return args[1]()
@@ -284,40 +164,38 @@ export class CryptoProDriver {
     }
 
 
-    async #versionCompare_Async(StringVersion, ObjectVersion) {
+    private async versionCompare_Async(stringVersion: string, objectVersion: any) {
         const _this = this
-        if (typeof (ObjectVersion) == "string")
+        if (typeof (objectVersion) == "string")
             return -1
-        const arr = StringVersion.split('.')
+        const arr = stringVersion.split('.')
         let isActualVersion = true
         return new Promise(function (resolve, reject) {
             _this._plugin.async_spawn(function* (args) {
-                if ((yield ObjectVersion.MajorVersion) == parseInt(arr[0])) {
-                    if ((yield ObjectVersion.MinorVersion) == parseInt(arr[1])) {
-                        if ((yield ObjectVersion.BuildVersion) == parseInt(arr[2])) {
+                if ((yield objectVersion.MajorVersion) == parseInt(arr[0])) {
+                    if ((yield objectVersion.MinorVersion) == parseInt(arr[1])) {
+                        if ((yield objectVersion.BuildVersion) == parseInt(arr[2])) {
                             isActualVersion = true
                             _this.isActualVersion = true
                         }
-                        else if ((yield ObjectVersion.BuildVersion) < parseInt(arr[2])) {
+                        else if ((yield objectVersion.BuildVersion) < parseInt(arr[2])) {
                             _this.isActualVersion = false
                             isActualVersion = false
                         }
-                    } else if ((yield ObjectVersion.MinorVersion) < parseInt(arr[1])) {
+                    } else if ((yield objectVersion.MinorVersion) < parseInt(arr[1])) {
                         _this.isActualVersion = false
                         isActualVersion = false
                     }
-                } else if ((yield ObjectVersion.MajorVersion) < parseInt(arr[0])) {
+                } else if ((yield objectVersion.MajorVersion) < parseInt(arr[0])) {
                     _this.isActualVersion = false
                     isActualVersion = false
                 }
 
-                // if (!isActualVersion) {
-                //     console.log("There is newer version of plugin: " + (yield CurrentPluginVersion.toString()))
-                // }
+
                 let oAbout = yield _this._plugin.CreateObjectAsync("CAdESCOM.About")
                 let ver = yield oAbout.CSPVersion("", 80)
                 let ret = (yield ver.MajorVersion) + "." + (yield ver.MinorVersion) + "." + (yield ver.BuildVersion)
-                _this._currentPluginVersion = ret
+                _this.pluginVersion = ret
 
                 try {
                     _this._scpName = yield oAbout.CSPName(80)
@@ -330,10 +208,11 @@ export class CryptoProDriver {
         }); //this.#plugin.async_spawn
     }
 
-    async #getLatestVersion_Async(currentPluginVersion) {
-        const _this = this
+    private async getLatestVersion_Async(currentPluginVersion: any): Promise<unknown> {
+        const _this = this;
+
         return new Promise(function (resolve, reject) {
-            const xmlhttp = _this.#getXmlHttp()
+            const xmlhttp = new XMLHttpRequest()
             xmlhttp.open("GET", "https://www.cryptopro.ru/sites/default/files/products/cades/latest_2_0.txt", true)
             xmlhttp.timeout = 1000
             xmlhttp.onreadystatechange = async function () {
@@ -341,7 +220,8 @@ export class CryptoProDriver {
                 if (xmlhttp.readyState == 4) {
                     if (xmlhttp.status == 200) {
                         pluginBaseVersion = xmlhttp.responseText
-                        await _this.#versionCompare_Async(pluginBaseVersion, currentPluginVersion)
+                        await _this.versionCompare_Async(pluginBaseVersion, currentPluginVersion)
+
                         resolve(void 0)
                     }
                     else
@@ -360,14 +240,12 @@ export class CryptoProDriver {
         console.timeEnd('getAllDevices')
     }
 
-    async #getAllDevices() {
-
-        return await this.#getAllDevicesAsync()
-
+    async #getAllDevices(): Promise<void> {
+        return await this.getAllDevicesAsync()
     }
 
 
-    async #getAllDevicesAsync() {
+    private async getAllDevicesAsync(): Promise<void> {
         const _this = this
 
         return new Promise(function (resolve, reject) {
@@ -459,7 +337,7 @@ export class CryptoProDriver {
                         }
                         catch (ex) {
                             alert("Ошибка при перечислении сертификатов: " + _this._plugin.getLastError(ex))
-                            reject(_this.#handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(ex)}`, 'getAllDevicesAsync'))
+                            reject(_this.handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(ex)}`, 'getAllDevicesAsync'))
                         }
                         _this._certList[i] = (certificateItem)
 
@@ -494,7 +372,7 @@ export class CryptoProDriver {
                     yield oStore.Close()
                     console.log("Невозможно загрузить список сертификатов." + _this._plugin.getLastError(e))
 
-                    reject(_this.#handleError(4, `Невозможно загрузить список сертификатов ${_this._plugin.getLastError(e)}`, 'getAllDevicesNPAPI'))
+                    reject(_this.handleError(4, `Невозможно загрузить список сертификатов ${_this._plugin.getLastError(e)}`, 'getAllDevicesNPAPI'))
                 }
 
                 if (certCnt == 0) {
@@ -551,7 +429,7 @@ export class CryptoProDriver {
                     }
                     catch (ex) {
                         alert("Ошибка при перечислении сертификатов: " + _this._plugin.getLastError(ex))
-                        reject(_this.#handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(ex)}`, 'getAllDevicesAsync'))
+                        reject(_this.handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(ex)}`, 'getAllDevicesAsync'))
                     }
                     _this._certList[i] = (certificateItem)
 
@@ -573,14 +451,7 @@ export class CryptoProDriver {
     }
 
 
-
-
-
-
-
-
-
-    async #signCMSAsync(data, certificateId, deviceId) {
+    private async signCMSAsync(data, certificateId, deviceId): Promise<string> {
         const _this = this
 
         const certificate = _this._deviceMap.get(deviceId)[certificateId];
@@ -593,17 +464,17 @@ export class CryptoProDriver {
                 if (!(data != undefined && data != null)) {
                     console.log("Data is null or undefined")
 
-                    reject(_this.#handleError(2, 'Нечего подписывать', ' #signCMSAsync'));
+                    reject(_this.handleError(2, 'Нечего подписывать', ' #signCMSAsync'));
                 }
 
                 if (typeof data === 'object') {
-                    dataToSign = _this.#bytesToBase64(data);
+                    dataToSign = _this.bytesToBase64(data);
                 }
                 else {
                     dataToSign = encode(data);
                 }
 
-                let Signature;
+                let Signature: string;
 
                 try {
                     //FillCertInfo_Async(certificate);
@@ -619,13 +490,13 @@ export class CryptoProDriver {
                         console.log("Ошибка при создании объекта CAdESCOM.CPSigner");
                         errormes = "Failed to create CAdESCOM.CPSigner: " + err;
 
-                        reject(_this.#handleError(2, errormes, ' #signCMSAsync'))
+                        reject(_this.handleError(2, errormes, ' #signCMSAsync'))
                     }
 
                     try {
                         oSigningTimeAttr = yield _this._plugin.CreateObjectAsync("CADESCOM.CPAttribute")
                     } catch (err) {
-                        reject(_this.#handleError(2, err, ' #signCMSAsync'))
+                        reject(_this.handleError(2, err, ' #signCMSAsync'))
                     }
 
                     yield oSigningTimeAttr.propset_Name(_this._plugin.CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME)
@@ -637,7 +508,7 @@ export class CryptoProDriver {
                     try {
                         oDocumentNameAttr = yield _this._plugin.CreateObjectAsync("CADESCOM.CPAttribute")
                     } catch (err) {
-                        reject(_this.#handleError(2, err, ' #signCMSAsync'))
+                        reject(_this.handleError(2, err, ' #signCMSAsync'))
                     }
 
                     yield oDocumentNameAttr.propset_Name(_this._plugin.CADESCOM_AUTHENTICATED_ATTRIBUTE_DOCUMENT_NAME)
@@ -649,17 +520,18 @@ export class CryptoProDriver {
                     }
                     else {
                         errormes = "Failed to create CAdESCOM.CPSigner"
-                        reject(_this.#handleError(2, errormes, ' #signCMSAsync'))
+                        reject(_this.handleError(2, errormes, ' #signCMSAsync'))
                     }
 
                     try {
                         oSignedData = yield _this._plugin.CreateObjectAsync("CAdESCOM.CadesSignedData")
                     } catch (err) {
-                        reject(_this.#handleError(2, err, ' #signCMSAsync'))
+                        reject(_this.handleError(2, err, ' #signCMSAsync'))
                     }
 
                     // Отключаем проверку цепочки сертификатов пользователя
                     // yield oSigner.propset_Options(this.#plugin.CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN)
+
                     yield oSigner.propset_Options(_this._plugin.CAPICOM_CERTIFICATE_INCLUDE_END_ENTITY_ONLY)
                     yield oSignedData.propset_ContentEncoding(_this._plugin.CADESCOM_BASE64_TO_BINARY) //
 
@@ -672,7 +544,7 @@ export class CryptoProDriver {
                     catch (err) {
                         console.log('Ошибка при вызове метода oSignedData.SignCades, объект CAdESCOM.CadesSignedData')
                         errormes = "Ошибка при вызове метода oSignedData.SignCades, объект CAdESCOM.CadesSignedData \n Не удалось создать подпись из-за ошибки: " + JSON.stringify(err);
-                        reject(_this.#handleError(2, errormes, ' #signCMSAsync'))
+                        reject(_this.handleError(2, errormes, ' #signCMSAsync'))
                     }
 
                     console.log("Подпись сформирована успешно:")
@@ -682,309 +554,20 @@ export class CryptoProDriver {
                 catch (err) {
                     console.error(err)
 
-                    reject(_this.#handleError(2, err, ' #signCMSAsync'))
+                    reject(_this.handleError(2, err, ' #signCMSAsync'))
                 }
             }, resolve, reject)
         });
     }
 
 
-    #signCMSNPAPI(data, certificateId, deviceId) {
-        const setDisplayData = true
-        const _this = this
-        const certificate = _this._deviceMap.get(deviceId)[certificateId]
-
-        if (!isObject(data)) {
-            alert("Data is null or undefined")
-            return
-        }
-
-
-        const dataToSign = encode(data)
-        let Signature
-
-        try {
-            let errormes
-            let oSigner
-            let oSigningTimeAttr
-            let oDocumentNameAttr
-            let oSignedData
-            try {
-                oSigner = _this._plugin.CreateObject("CAdESCOM.CPSigner")
-            } catch (err) {
-                errormes = "Failed to create CAdESCOM.CPSigner: " + err.number
-                throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-            }
-            try {
-                oSigningTimeAttr = _this._plugin.CreateObject("CADESCOM.CPAttribute")
-            } catch (err) {
-                errormes = "Failed to create CADESCOM.CPAttribute: " + JSON.stringify(err)
-                throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-            }
-
-            oSigningTimeAttr.propset_Name(_this._plugin.CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME)
-            const oTimeNow = new Date()
-            oSigningTimeAttr.propset_Value(oTimeNow)
-            const attr = oSigner.AuthenticatedAttributes2
-            attr.Add(oSigningTimeAttr)
-
-            try {
-                oDocumentNameAttr = _this._plugin.CreateObject("CADESCOM.CPAttribute")
-            } catch (err) {
-                errormes = "Failed to create CADESCOM.CPAttribute: " + JSON.stringify(err);
-                throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-            }
-
-            oDocumentNameAttr.propset_Name(_this._plugin.CADESCOM_AUTHENTICATED_ATTRIBUTE_DOCUMENT_NAME)
-            oDocumentNameAttr.propset_Value("Document Name")
-            attr.Add(oDocumentNameAttr)
-
-            if (oSigner) {
-                oSigner.propset_Certificate(certificate)
-            }
-            else {
-                errormes = "Failed to create CAdESCOM.CPSigner"
-                throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-            }
-            try {
-                oSignedData = _this._plugin.CreateObject("CAdESCOM.CadesSignedData")
-            } catch (err) {
-                errormes = "Failed to create CAdESCOM.CadesSignedData: " + JSON.stringify(err);
-                throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-            }
-
-            if (dataToSign) {
-                // Отключаем проверку цепочки сертификатов пользователя
-                // yield oSigner.propset_Options(this.#plugin.CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN)
-                oSigner.propset_Options(_this._plugin.CAPICOM_CERTIFICATE_INCLUDE_END_ENTITY_ONLY)
-                oSignedData.propset_ContentEncoding(_this._plugin.CADESCOM_BASE64_TO_BINARY) //
-                if (typeof (setDisplayData) != 'undefined') {
-                    //Set display data flag flag for devices like Rutoken PinPad
-                    oSignedData.propset_DisplayData(1)
-                }
-                oSignedData.propset_Content(dataToSign)
-
-                try {
-                    Signature = oSignedData.SignCades(oSigner, _this._plugin.CADESCOM_CADES_BES)
-                }
-                catch (err) {
-                    errormes = "Не удалось создать подпись из-за ошибки: " + JSON.stringify(err)
-                    throw _this.#handleError(2, errormes, 'signCMSNPAPI');
-                }
-            }
-            console.log("Подпись сформирована успешно:")
-            console.log(Signature)
-            return Signature
-        }
-        catch (err) {
-            if (err.method)
-                throw err;
-            console.error(err)
-            throw _this.#handleError(2, err, 'signCMSNPAPI');
-        }
-    }
-
-    #getAllDevicesNPAPI() {
-        const _this = this
-        let MyStoreExists = true
-        let oStore
-        let certCnt
-        let certs
-        let isFound
-        try {
-            oStore = _this._plugin.CreateObject("CAdESCOM.Store")
-            if (!oStore) {
-                console.log("Create store failed")
-                throw _this.#handleError(3, 'Create store failed', 'getAllDevicesNPAPI');
-            }
-
-            oStore.Open()
-        }
-        catch (ex) {
-            MyStoreExists = false
-            console.log("Ошибка при открытии хранилища: " + _this._plugin.getLastError(ex))
-            throw _this.#handleError(3, `Ошибка при открытии хранилища: ${_this._plugin.getLastError(ex)}`, 'getAllDevicesNPAPI');
-        }
-
-
-        if (MyStoreExists) {
-            try {
-                certs = oStore.Certificates
-                certCnt = certs.Count
-            }
-            catch (ex) {
-                console.log("Ошибка при получении Certificates или Count: " + _this._plugin.getLastError(ex))
-                throw _this.#handleError(3, `Ошибка при получении Certificates или Count: ${_this._plugin.getLastError(ex)}`, 'getAllDevicesNPAPI');
-            }
-
-            isFound = false
-            for (let i = 1; i <= certCnt; i++) {
-                let cert
-                try {
-                    cert = certs.Item(i)
-                    for (var j = 0; j < _this._parsedCertificateList.length; j++) {
-                        let certListTemp = _this._parsedCertificateList[j].thumbprint
-                        let certTemp = cert.Thumbprint
-                        if (deepEqual(certListTemp, certTemp)) {
-                            isFound = true
-                            break
-                        }
-                    }
-                    if (isFound)
-                        continue
-
-
-                    let pubKey = cert.PublicKey(),
-                        algo = pubKey.Algorithm,
-                        algoOid = algo.Value
-
-                    let now = new Date()
-
-                    try {
-                        let validToDate = new Date((cert.ValidToDate)),
-                            validFromDate = new Date((cert.ValidFromDate)),
-                            validator = cert.IsValid(),
-                            isValid = validator.Result
-
-                        let c: IParsedCertificate = {
-                            validToDate: cert.ValidToDate,
-                            validFromDate: cert.ValidFromDate,
-                            subjectName: cert.SubjectName,
-                            issuerName: cert.IssuerName,
-                            thumbprint: cert.Thumbprint,
-                            id: i,
-                            isValid: now < validToDate && now >= validFromDate,
-                            hasPrivateKey: cert.HasPrivateKey(),
-                            serial: cert.SerialNumber,
-                            b64: cert.Export(_this._plugin.CADESCOM_ENCODE_BASE64),
-                            // algorythmOid: algoOid,
-                            deviceId: 0
-                        }
-                        let isFoundParsed = false
-                        for (let k = 0; k < _this._parsedCertificateList.length; k++) {
-                            let parsedTemp = _this._parsedCertificateList[k]
-                            if (deepEqual(parsedTemp, c))
-                                isFoundParsed = true
-                        }
-                        if (!isFoundParsed)
-                            _this._parsedCertificateList.push(c)
-
-                    } catch (e) {
-                        /*me.lastError = "Ошибка при получении свойства SubjectName: " + this.#plugin.getError(e)
-                         me.certificateListReady = true*/
-                    }
-                }
-                catch (ex) {
-                    alert("Ошибка при перечислении сертификатов: " + _this._plugin.getLastError(ex))
-                    throw _this.#handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(ex)}`, 'getAllDevicesNPAPI');
-                }
-                _this._certList.push(cert)
-
-            }
-            _this._deviceMap.set(0, _this._certList)
-            _this._certList = []
-
-
-            oStore.Close()
-        }
-
-        //getting certs from hardware
-
-        try {
-            oStore.Open(_this._plugin.CADESCOM_CONTAINER_STORE)
-            certs = oStore.Certificates
-            certCnt = certs.Count
-        } catch (e) {
-            oStore.Close()
-            console.log("Невозможно загрузить список сертификатов." + _this._plugin.getLastError(e))
-            throw _this.#handleError(4, `Невозможно загрузить список сертификатов ${_this._plugin.getLastError(e)}`, 'getAllDevicesNPAPI');
-        }
-
-        if (certCnt == 0) {
-            oStore.Close()
-
-            console.log("Сертификаты на токенах не обнаружены")
-            return
-        }
-        isFound = false
-
-        for (let i = 1; i <= certCnt; i++) {
-            let cert
-            try {
-                cert = certs.Item(i)
-                for (let j = 0; j < _this._parsedCertificateList.length; j++) {
-                    let certListTemp = _this._parsedCertificateList[j].thumbprint
-                    let certTemp = cert.Thumbprint
-                    if (deepEqual(certListTemp, certTemp)) {
-                        isFound = true
-                        break
-                    }
-                }
-                if (isFound)
-                    continue
-            } catch (e) {
-                oStore.Close()
-
-                console.log("Ошибка при перечислении сертификатов: " + _this._plugin.getLastError(e))
-                throw _this.#handleError(4, `Ошибка при перечислении сертификатов ${_this._plugin.getLastError(e)}`, 'getAllDevicesNPAPI');
-            }
-
-            let pubKey = cert.PublicKey(),
-                algo = pubKey.Algorithm,
-                algoOid = algo.Value
-
-            let now = new Date()
-
-            try {
-                let validToDate = new Date((cert.ValidToDate)),
-                    validFromDate = new Date((cert.ValidFromDate)),
-                    validator = cert.IsValid(),
-                    isValid = validator.Result
-
-                let c: IParsedCertificate = {
-                    validToDate: cert.ValidToDate,
-                    validFromDate: cert.ValidFromDate,
-                    subjectName: cert.SubjectName,
-                    issuerName: cert.IssuerName,
-                    thumbprint: cert.Thumbprint,
-                    id: i,
-                    isValid: now < validToDate && now >= validFromDate,
-                    hasPrivateKey: cert.HasPrivateKey(),
-                    serial: cert.SerialNumber,
-                    b64: cert.Export(_this._plugin.CADESCOM_ENCODE_BASE64),
-                    // algorythmOid: algoOid,
-                    deviceId: 1
-                }
-                console.log(cert)
-                let isFoundParsed = false
-                for (let k = 0; k < _this._parsedCertificateList.length; k++) {
-                    let parsedTemp = _this._parsedCertificateList[k]
-                    if (deepEqual(parsedTemp, c))
-                        isFoundParsed = true
-                }
-                if (!isFoundParsed)
-                    _this._parsedCertificateList.push(c)
-
-            } catch (e) {
-                console.log("Ошибка при парсинге сертификатов: " + _this._plugin.getLastError(e))
-                throw _this.#handleError(4, `Ошибка при парсинге сертификатов ${_this._plugin.getLastError(e)}`, 'getAllDevicesNPAPI');
-            }
-            _this._certList.push(cert)
-        }
-        _this._deviceMap.set(1, _this._certList)
-        _this._certList = []
-
-        oStore.Close()
-    }
-
-    #bytesToBase64(arrayBuffer) {
+    private bytesToBase64(arrayBuffer: Uint8Array): string {
         return btoa(new Uint8Array(arrayBuffer).reduce(function (data, byte) {
             return data + String.fromCharCode(byte);
         }, ''));
-        // return btoa(String.fromCharCode(arrayBuffer));
     }
 
-    #handleError(code, message, method) {
+    private handleError(code, message, method) {
         let error = {
             code: code,
             message: message,

@@ -1,6 +1,8 @@
 import { CryptoProDriver } from '../dist/crypto-pro/index.js';
+import { RutokenDriver } from '../dist/rutoken/index.js';
 
 const plugin = new CryptoProDriver();
+const pluginR = new RutokenDriver()
 async function initialize() {
     console.time('start')
     await plugin.loadPlugin();
@@ -17,9 +19,27 @@ async function initialize() {
         }
     }
 }
+async function initializeR() {
+    console.time('start')
+    try {
+        await pluginR.loadPlugin();
+        // const isActual = await pluginR.isActualVersionPlugin();
+        // console.timeEnd('start')
+        return {
+            isActual: true
+        }
+
+    } catch (ex) {
+        console.log(ex)
+        return {
+            isActual: true
+        }
+    }
+}
 
 
 const meta = await initialize();
+const metaR = await initializeR()
 updateView(meta)
 
 function updateView(data) {
@@ -41,7 +61,7 @@ function updateView(data) {
 
     for (let item of plugin.parsedCertificates) {
         let certificateEl = document.createElement('div')
-        certificateEl.innerHTML = item.SubjectName;
+        certificateEl.innerHTML = item.subjectName;
         certificateEl.style.border = '1px solid red';
         el.appendChild(certificateEl);
     }
